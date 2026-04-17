@@ -115,6 +115,14 @@ fossils-vtu2obj convert examples/beam3d.vtu out/beam \
   --n-colors 256
 ```
 
+Convert without normals:
+
+```bash
+fossils-vtu2obj convert examples/beam3d.vtu out/beam_raw \
+  --field stress_von_mises \
+  --no-normals
+```
+
 Convert a cell-data field:
 
 ```bash
@@ -160,6 +168,9 @@ The intended workflow is:
 
 Because the UVs encode the scalar field directly, no unwrap or bake step is
 needed in Blender for the current workflow.
+
+By default the converter also writes point normals into the OBJ when possible.
+If you want a more minimal geometry export, use `--no-normals`.
 
 ## Project layout
 
@@ -227,8 +238,8 @@ CMake-oriented backend if the native bridge becomes real.
   tensor field,
 - GUI preview tests use a non-embedded fallback mode in headless CI because
   offscreen Windows OpenGL is fragile with the Qt VTK widget,
-- there is no persistent GUI settings storage yet,
-- there is no normals-generation option yet.
+- the GUI persists only a lightweight subset of settings for now,
+- there is no dedicated normals control yet in the CLI preview path.
 
 ## Development
 

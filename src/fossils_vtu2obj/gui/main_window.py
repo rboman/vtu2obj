@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt5 import QtCore, QtWidgets
+from PyQt5 import QtCore, QtGui, QtWidgets
 
 from ..arrays import list_cell_arrays, list_point_arrays
 from ..colormaps import list_colormap_names
@@ -15,7 +15,7 @@ from ..preview import (
     build_scalar_preview_scene,
     build_textured_preview_scene,
 )
-from ..surface import extract_surface
+from ..surface import extract_surface, generate_surface_normals
 from ..texture import build_palette_texture
 from ..uvmap import apply_scalar_uv_map, ensure_point_scalar_field
 from .vtk_view import VtkView
@@ -24,11 +24,15 @@ from .vtk_view import VtkView
 class MainWindow(QtWidgets.QMainWindow):
     """Minimal GUI for inspecting, previewing, and exporting VTU files."""
 
+    ORGANIZATION_NAME = "fossils"
+    APPLICATION_NAME = "fossils-vtu2obj"
+
     def __init__(
         self,
         initial_path: str | Path | None = None,
         *,
         enable_vtk_view: bool = True,
+        settings: QtCore.QSettings | None = None,
     ) -> None:
         super().__init__()
         self.setWindowTitle("fossils-vtu2obj")
@@ -40,12 +44,24 @@ class MainWindow(QtWidgets.QMainWindow):
         self._last_scene: PreviewScene | None = None
         self._enable_vtk_view = enable_vtk_view
         self.vtk_view: VtkView | None = None
+        self._settings = settings or QtCore.QSettings(
+            QtCore.QSettings.IniFormat,
+            QtCore.QSettings.UserScope,
+            self.ORGANIZATION_NAME,
+            self.APPLICATION_NAME,
+        )
 
         self._build_ui()
+        self._restore_settings()
         self._set_controls_enabled(False)
 
         if initial_path is not None:
             self.load_file(initial_path, refresh=True)
+        elif self._settings.value("last_file_path"):
+            try:
+                self.load_file(self._settings.value("last_file_path"), refresh=True)
+            except (FileNotFoundError, TypeError, ValueError, RuntimeError):
+                pass
 
     def _build_ui(self) -> None:
         """Create the window layout and interactive controls."""
@@ -100,6 +116,10 @@ class MainWindow(QtWidgets.QMainWindow):
         controls_layout.addWidget(QtWidgets.QLabel("Color bins"), 2, 4)
         controls_layout.addWidget(self.n_colors_spin, 2, 5)
 
+        self.normals_checkbox = QtWidgets.QCheckBox("Generate normals")
+        self.normals_checkbox.setChecked(True)
+        controls_layout.addWidget(self.normals_checkbox, 3, 4)
+
         self.reset_range_button = QtWidgets.QPushButton("Use Data Range")
         self.reset_range_button.clicked.connect(self.reset_current_range)
         controls_layout.addWidget(self.reset_range_button, 3, 0)
@@ -138,6 +158,34 @@ class MainWindow(QtWidgets.QMainWindow):
             self.export_button,
         ):
             widget.setEnabled(enabled)
+
+    def _restore_settings(self) -> None:
+        """Restore a few lightweight GUI settings from persistent storage."""
+        preview_mode = str(self._settings.value("preview_mode", "scalar"))
+        mode_index = self.mode_combo.findData(preview_mode)
+        if mode_index >= 0:
+            self.mode_combo.setCurrentIndex(mode_index)
+
+        colormap = str(self._settings.value("colormap", "rainbow"))
+        colormap_index = self.colormap_combo.findText(colormap)
+        if colormap_index >= 0:
+            self.colormap_combo.setCurrentIndex(colormap_index)
+
+        self.n_colors_spin.setValue(int(self._settings.value("n_colors", 256)))
+        self.normals_checkbox.setChecked(
+            str(self._settings.value("generate_normals", "true")).lower() != "false"
+        )
+
+    def _save_settings(self) -> None:
+        """Persist the current lightweight GUI settings."""
+        if self.current_file_path is not None:
+            self._settings.setValue("last_file_path", str(self.current_file_path))
+            self._settings.setValue("last_field", self._current_field())
+        self._settings.setValue("preview_mode", self._current_preview_mode())
+        self._settings.setValue("colormap", self.colormap_combo.currentText())
+        self._settings.setValue("n_colors", self.n_colors_spin.value())
+        self._settings.setValue("generate_normals", self.normals_checkbox.isChecked())
+        self._settings.sync()
 
     def _show_error(self, message: str) -> None:
         """Display an error dialog and mirror the message in the status bar."""
@@ -236,11 +284,16 @@ class MainWindow(QtWidgets.QMainWindow):
         self.field_combo.blockSignals(True)
         self.field_combo.clear()
         self.field_combo.addItems(scalar_fields)
+        previous_field = str(self._settings.value("last_field", ""))
+        field_index = self.field_combo.findText(previous_field)
+        if field_index >= 0:
+            self.field_combo.setCurrentIndex(field_index)
         self.field_combo.blockSignals(False)
 
         self._set_controls_enabled(True)
         self.reset_current_range()
         self.statusBar().showMessage(f"Loaded {self.current_file_path.name}")
+        self._save_settings()
 
         if refresh:
             self.refresh_preview()
@@ -278,6 +331,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.statusBar().showMessage(
                     f"Preview scene prepared for field '{self._current_field()}'."
                 )
+            self._save_settings()
         except (TypeError, ValueError, RuntimeError) as exc:
             self._show_error(str(exc))
 
@@ -310,6 +364,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 str(mapping_kwargs["colormap"]),
                 n_colors=int(mapping_kwargs["n_colors"]),
             )
+            if self.normals_checkbox.isChecked():
+                textured_surface = generate_surface_normals(textured_surface)
             bundle = export_obj_bundle(textured_surface, output_prefix, texture_image)
         except (TypeError, ValueError, RuntimeError) as exc:
             self._show_error(str(exc))
@@ -327,3 +383,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 ]
             ),
         )
+        self._save_settings()
+
+    def closeEvent(self, event: QtGui.QCloseEvent) -> None:
+        """Persist settings when the window closes."""
+        self._save_settings()
+        super().closeEvent(event)

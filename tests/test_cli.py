@@ -73,6 +73,7 @@ def test_convert_command_writes_obj_bundle(
     assert output_prefix.with_suffix(".obj").is_file()
     assert output_prefix.with_suffix(".mtl").is_file()
     assert output_prefix.with_suffix(".png").is_file()
+    assert "vn " in output_prefix.with_suffix(".obj").read_text(encoding="utf-8")
 
 
 def test_convert_command_supports_scalar_cell_data(
@@ -97,3 +98,24 @@ def test_convert_command_supports_scalar_cell_data(
 
     assert result.exit_code == 0
     assert output_prefix.with_suffix(".obj").is_file()
+
+
+def test_convert_command_can_disable_normals(
+    sample_vtu_path: Path,
+    tmp_path: Path,
+) -> None:
+    output_prefix = tmp_path / "converted_no_normals" / "model"
+    result = runner.invoke(
+        app,
+        [
+            "convert",
+            str(sample_vtu_path),
+            str(output_prefix),
+            "--field",
+            "stress_von_mises",
+            "--no-normals",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "vn " not in output_prefix.with_suffix(".obj").read_text(encoding="utf-8")

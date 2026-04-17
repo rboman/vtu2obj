@@ -15,7 +15,7 @@ from .gui.app import launch_gui
 from .integrations.fossils import detect_native_bridge
 from .io_vtk import inspect_dataset, load_unstructured_grid
 from .preview import preview_scalar_field, preview_textured_surface
-from .surface import extract_surface
+from .surface import extract_surface, generate_surface_normals
 from .texture import build_palette_texture
 from .uvmap import apply_scalar_uv_map
 
@@ -98,6 +98,13 @@ TexturedPreviewOption = Annotated[
     typer.Option(
         "--textured",
         help="Preview the generated textured surface instead of scalar coloring.",
+    ),
+]
+NormalsOption = Annotated[
+    bool,
+    typer.Option(
+        "--normals/--no-normals",
+        help="Generate point normals on the exported surface mesh.",
     ),
 ]
 
@@ -269,6 +276,7 @@ def convert_command(
     vmin: VMinOption = None,
     vmax: VMaxOption = None,
     n_colors: NColorsOption = 256,
+    normals: NormalsOption = True,
 ) -> None:
     """Convert a VTU dataset into OBJ, MTL, and PNG outputs."""
     try:
@@ -284,6 +292,8 @@ def convert_command(
             vmax=vmax,
             n_colors=n_colors,
         )
+        if normals:
+            textured_surface = generate_surface_normals(textured_surface)
         texture_image = build_palette_texture(colormap, n_colors=n_colors)
         bundle = export_obj_bundle(textured_surface, output_prefix, texture_image)
     except (FileNotFoundError, TypeError, ValueError, RuntimeError) as exc:
