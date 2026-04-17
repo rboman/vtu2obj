@@ -31,6 +31,10 @@ jobs:
       - name: Run Ruff
         run: python -m ruff check . --no-cache
 
+      - name: Check Ruff formatting
+        continue-on-error: true
+        run: python -m ruff format --check . --no-cache
+
       - name: Run tests
         env:
           QT_QPA_PLATFORM: offscreen
