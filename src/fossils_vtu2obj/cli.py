@@ -14,6 +14,7 @@ from .export_obj import export_obj_bundle
 from .gui.app import launch_gui
 from .integrations.fossils import detect_native_bridge
 from .io_vtk import inspect_dataset, load_unstructured_grid
+from .preview import preview_scalar_field, preview_textured_surface
 from .surface import extract_surface
 from .texture import build_palette_texture
 from .uvmap import apply_scalar_uv_map
@@ -90,6 +91,13 @@ NColorsOption = Annotated[
         "--n-colors",
         min=2,
         help="Number of discrete color bins.",
+    ),
+]
+TexturedPreviewOption = Annotated[
+    bool,
+    typer.Option(
+        "--textured",
+        help="Preview the generated textured surface instead of scalar coloring.",
     ),
 ]
 
@@ -219,10 +227,35 @@ def preview_command(
     input_path: PreviewInputPathArgument,
     field: FieldOption,
     colormap: ColormapOption = "rainbow",
+    vmin: VMinOption = None,
+    vmax: VMaxOption = None,
+    n_colors: NColorsOption = 256,
+    textured: TexturedPreviewOption = False,
 ) -> None:
     """Preview a scalar field or textured surface."""
-    _ = (input_path, field, colormap)
-    _pending_command("preview", "step 4")
+    try:
+        require_colormap_name(colormap)
+        _validate_convert_field(input_path, field)
+        if textured:
+            preview_textured_surface(
+                input_path,
+                field,
+                colormap=colormap,
+                vmin=vmin,
+                vmax=vmax,
+                n_colors=n_colors,
+            )
+        else:
+            preview_scalar_field(
+                input_path,
+                field,
+                colormap=colormap,
+                vmin=vmin,
+                vmax=vmax,
+                n_colors=n_colors,
+            )
+    except (FileNotFoundError, TypeError, ValueError, RuntimeError) as exc:
+        _handle_cli_error(exc)
 
 
 @app.command("convert")
