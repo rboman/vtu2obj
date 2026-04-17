@@ -11,6 +11,10 @@ files (`.vtu`) into:
 The project targets post-processing workflows around the **fossils** finite
 element solver and keeps the core conversion pipeline **VTK-only**.
 
+![](docs/images/panthera_vtu2obj.jpg)
+
+![](docs/images/panthera_blender.jpg)
+
 ## Current status
 
 The first useful milestone is now implemented:
