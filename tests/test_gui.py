@@ -57,7 +57,9 @@ def test_main_window_loads_scalar_fields(
     assert window.export_button.icon().isNull() is False
     assert window.windowIcon().isNull() is False
     assert hasattr(window, "settings_menu")
+    assert window.settings_menu.title() == "&Settings"
     assert hasattr(window, "reset_defaults_action")
+    assert not hasattr(window, "reset_defaults_button")
 
 
 def test_main_window_restores_persisted_settings(

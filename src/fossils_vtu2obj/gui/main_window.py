@@ -16,9 +16,12 @@ from ..defaults import (
     DEFAULT_BUNDLE_SHOW_AXES,
     DEFAULT_BUNDLE_SHOW_EDGES,
     DEFAULT_COLORMAP_NAME,
+    DEFAULT_GENERATE_NORMALS,
     DEFAULT_GITHUB_URL,
     DEFAULT_GUI_SPLITTER_SIZES,
     DEFAULT_N_COLORS,
+    DEFAULT_N_COLORS_MAX,
+    DEFAULT_N_COLORS_MIN,
     DEFAULT_PREFERRED_SCALAR_FIELD_NAME,
     DEFAULT_SPINBOX_DECIMALS,
     DEFAULT_SPINBOX_MAX,
@@ -246,21 +249,21 @@ class MainWindow(QtWidgets.QMainWindow):
         """Create the application menus."""
         menu_bar = self.menuBar()
 
-        file_menu = menu_bar.addMenu("&File")
-        file_menu.addAction(self.open_vtu_action)
-        file_menu.addAction(self.open_obj_action)
-        file_menu.addSeparator()
-        file_menu.addAction(self.export_bundle_action)
+        self.file_menu = menu_bar.addMenu("&File")
+        self.file_menu.addAction(self.open_vtu_action)
+        self.file_menu.addAction(self.open_obj_action)
+        self.file_menu.addSeparator()
+        self.file_menu.addAction(self.export_bundle_action)
 
-        settings_menu = menu_bar.addMenu("&Settings")
-        settings_menu.addAction(self.reset_defaults_action)
+        self.settings_menu = menu_bar.addMenu("&Settings")
+        self.settings_menu.addAction(self.reset_defaults_action)
 
-        help_menu = menu_bar.addMenu("&Help")
-        help_menu.addAction(self.about_action)
-        help_menu.addAction(self.github_action)
+        self.help_menu = menu_bar.addMenu("&Help")
+        self.help_menu.addAction(self.about_action)
+        self.help_menu.addAction(self.github_action)
 
-        credits_menu = menu_bar.addMenu("&Credits")
-        credits_menu.addAction(self.credits_action)
+        self.credits_menu = menu_bar.addMenu("&Credits")
+        self.credits_menu.addAction(self.credits_action)
 
     def _build_vtu_controls_group(self) -> QtWidgets.QGroupBox:
         """Build the left-hand VTU and conversion controls."""
@@ -312,7 +315,7 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addWidget(self.colormap_combo, 1, 3)
 
         self.n_colors_spin = QtWidgets.QSpinBox()
-        self.n_colors_spin.setRange(2, 4096)
+        self.n_colors_spin.setRange(DEFAULT_N_COLORS_MIN, DEFAULT_N_COLORS_MAX)
         self.n_colors_spin.setValue(DEFAULT_N_COLORS)
         self.n_colors_spin.setToolTip(
             "Number of discrete palette bins used for preview, UV quantization, "
@@ -347,7 +350,7 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addWidget(self.vmax_spin, 2, 3)
 
         self.normals_checkbox = QtWidgets.QCheckBox("Generate normals")
-        self.normals_checkbox.setChecked(True)
+        self.normals_checkbox.setChecked(DEFAULT_GENERATE_NORMALS)
         self.normals_checkbox.setToolTip(
             "Generate and export point normals on the surface mesh so downstream "
             "tools can shade the OBJ more smoothly."
@@ -494,11 +497,15 @@ class MainWindow(QtWidgets.QMainWindow):
         if colormap_index >= 0:
             self.colormap_combo.setCurrentIndex(colormap_index)
 
-        self.n_colors_spin.setValue(
-            int(self._settings.value("n_colors", DEFAULT_N_COLORS)))
+        restored_n_colors = int(self._settings.value("n_colors", DEFAULT_N_COLORS))
+        restored_n_colors = max(
+            DEFAULT_N_COLORS_MIN,
+            min(DEFAULT_N_COLORS_MAX, restored_n_colors),
+        )
+        self.n_colors_spin.setValue(restored_n_colors)
         self.normals_checkbox.setChecked(
             self._setting_to_bool(
-                self._settings.value("generate_normals"), True)
+                self._settings.value("generate_normals"), DEFAULT_GENERATE_NORMALS)
         )
 
         self._restore_viewport_settings(
@@ -557,7 +564,7 @@ class MainWindow(QtWidgets.QMainWindow):
         """Apply the built-in default settings to the current session."""
         self.colormap_combo.setCurrentText(DEFAULT_COLORMAP_NAME)
         self.n_colors_spin.setValue(DEFAULT_N_COLORS)
-        self.normals_checkbox.setChecked(True)
+        self.normals_checkbox.setChecked(DEFAULT_GENERATE_NORMALS)
         self.volume_panel.set_display_options(self.VOLUME_DEFAULTS)
         self.bundle_panel.set_display_options(self.BUNDLE_DEFAULTS)
         self.main_splitter.setSizes(list(DEFAULT_GUI_SPLITTER_SIZES))

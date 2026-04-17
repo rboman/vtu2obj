@@ -49,6 +49,22 @@ def test_list_arrays_command_lists_point_and_cell_arrays(sample_vtu_path: Path) 
     assert "cell_stress_von_mises" in result.output
 
 
+def test_inspect_command_reports_doli_dataset_shape(doli_vtu_path: Path) -> None:
+    result = runner.invoke(app, ["inspect", str(doli_vtu_path)])
+
+    assert result.exit_code == 0
+    assert "Points: 5128" in result.output
+    assert "Cells: 16304" in result.output
+
+
+def test_list_arrays_command_lists_doli_stress_fields(doli_vtu_path: Path) -> None:
+    result = runner.invoke(app, ["list-arrays", str(doli_vtu_path)])
+
+    assert result.exit_code == 0
+    assert "stress_von_mises" in result.output
+    assert "cell_stress_von_mises" in result.output
+
+
 def test_convert_command_writes_obj_bundle(
     sample_vtu_path: Path,
     tmp_path: Path,

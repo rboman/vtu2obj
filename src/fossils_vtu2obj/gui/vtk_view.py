@@ -6,6 +6,7 @@ import vtk
 from PyQt5 import QtCore
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 
+from ..defaults import DEFAULT_TRIHEDRON_VIEWPORT
 from ..model import ViewDisplayOptions
 from ..preview import PreviewScene
 
@@ -141,7 +142,7 @@ class VtkView(QVTKRenderWindowInteractor):
         self._axes_widget = vtk.vtkOrientationMarkerWidget()
         self._axes_widget.SetOrientationMarker(self._axes_actor)
         self._axes_widget.SetInteractor(self._interactor)
-        self._axes_widget.SetViewport(0.0, 0.0, 0.20, 0.20)
+        self._axes_widget.SetViewport(*DEFAULT_TRIHEDRON_VIEWPORT)
         self._axes_widget.KeyPressActivationOff()
         if hasattr(self._axes_widget, "SetDefaultRenderer"):
             self._axes_widget.SetDefaultRenderer(self._renderer)

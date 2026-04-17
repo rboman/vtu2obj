@@ -13,6 +13,7 @@ from .defaults import (
     DEFAULT_EDGE_LINE_OFFSET,
     DEFAULT_EDGE_LINE_WIDTH,
     DEFAULT_N_COLORS,
+    DEFAULT_PREVIEW_WINDOW_SIZE,
     DEFAULT_RENDERER_BACKGROUND,
     DEFAULT_SCALAR_BAR_HEIGHT,
     DEFAULT_SCALAR_BAR_LABEL_COUNT,
@@ -423,7 +424,7 @@ def show_preview_scene(
     scene: PreviewScene,
     *,
     title: str = "fossils-vtu2obj preview",
-    window_size: tuple[int, int] = (1280, 800),
+    window_size: tuple[int, int] = DEFAULT_PREVIEW_WINDOW_SIZE,
 ) -> vtk.vtkRenderWindow:
     """Open a VTK render window for a prepared preview scene."""
     render_window = vtk.vtkRenderWindow()
