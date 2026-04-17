@@ -1,0 +1,188 @@
+"""Command-line interface for fossils-vtu2obj."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Annotated
+
+import typer
+
+from . import __version__
+from .gui.app import launch_gui
+from .integrations.fossils import detect_native_bridge
+
+app = typer.Typer(
+    help=(
+        "Convert VTU FEM results into extracted surface meshes, OBJ files, "
+        "palette textures, and MTL files."
+    ),
+    invoke_without_command=True,
+    no_args_is_help=True,
+)
+
+InputPathArgument = Annotated[
+    Path,
+    typer.Argument(
+        ...,
+        help="Path to the VTU file to inspect.",
+    ),
+]
+PreviewInputPathArgument = Annotated[
+    Path,
+    typer.Argument(
+        ...,
+        help="Path to the VTU file to preview.",
+    ),
+]
+ConvertInputPathArgument = Annotated[
+    Path,
+    typer.Argument(
+        ...,
+        help="Path to the VTU file to convert.",
+    ),
+]
+OutputPrefixArgument = Annotated[
+    Path,
+    typer.Argument(
+        ...,
+        help="Output path prefix for OBJ, MTL, and PNG files.",
+    ),
+]
+FieldOption = Annotated[
+    str,
+    typer.Option(
+        ...,
+        "--field",
+        help="Scalar field used for coloring.",
+    ),
+]
+ColormapOption = Annotated[
+    str,
+    typer.Option(
+        "--colormap",
+        help="Name of the colormap preset.",
+    ),
+]
+VMinOption = Annotated[
+    float | None,
+    typer.Option(
+        "--vmin",
+        help="Optional lower bound for scalar mapping.",
+    ),
+]
+VMaxOption = Annotated[
+    float | None,
+    typer.Option(
+        "--vmax",
+        help="Optional upper bound for scalar mapping.",
+    ),
+]
+NColorsOption = Annotated[
+    int,
+    typer.Option(
+        "--n-colors",
+        min=2,
+        help="Number of discrete color bins.",
+    ),
+]
+
+
+def _version_callback(value: bool) -> None:
+    """Print the version and exit when requested."""
+    if value:
+        typer.echo(__version__)
+        raise typer.Exit()
+
+
+def _pending_command(command_name: str, step_name: str) -> None:
+    """Exit with a clear message for bootstrap-only commands."""
+    typer.secho(
+        f"The '{command_name}' command is reserved in the bootstrap and will be "
+        f"implemented in {step_name}.",
+        fg=typer.colors.YELLOW,
+    )
+    raise typer.Exit(code=1)
+
+
+@app.callback()
+def app_callback(
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            callback=_version_callback,
+            is_eager=True,
+            help="Show the package version and exit.",
+        ),
+    ] = False,
+) -> None:
+    """Run the CLI or display package metadata."""
+    _ = version
+
+
+@app.command("inspect")
+def inspect_command(input_path: InputPathArgument) -> None:
+    """Inspect a VTU dataset."""
+    _ = input_path
+    _pending_command("inspect", "step 2")
+
+
+@app.command("list-arrays")
+def list_arrays_command(input_path: InputPathArgument) -> None:
+    """List point and cell arrays found in a VTU dataset."""
+    _ = input_path
+    _pending_command("list-arrays", "step 2")
+
+
+@app.command("preview")
+def preview_command(
+    input_path: PreviewInputPathArgument,
+    field: FieldOption,
+    colormap: ColormapOption = "rainbow",
+) -> None:
+    """Preview a scalar field or textured surface."""
+    _ = (input_path, field, colormap)
+    _pending_command("preview", "step 4")
+
+
+@app.command("convert")
+def convert_command(
+    input_path: ConvertInputPathArgument,
+    output_prefix: OutputPrefixArgument,
+    field: FieldOption,
+    colormap: ColormapOption = "rainbow",
+    vmin: VMinOption = None,
+    vmax: VMaxOption = None,
+    n_colors: NColorsOption = 256,
+) -> None:
+    """Convert a VTU dataset into OBJ, MTL, and PNG outputs."""
+    _ = (input_path, output_prefix, field, colormap, vmin, vmax, n_colors)
+    _pending_command("convert", "step 3")
+
+
+@app.command("gui")
+def gui_command() -> None:
+    """Launch the future GUI entry point."""
+    try:
+        launch_gui()
+    except RuntimeError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED)
+        raise typer.Exit(code=1) from exc
+    except NotImplementedError as exc:
+        typer.secho(str(exc), fg=typer.colors.YELLOW)
+        raise typer.Exit(code=1) from exc
+
+
+@app.command("native-status")
+def native_status_command() -> None:
+    """Report the availability of the optional fossils native bridge."""
+    status = detect_native_bridge()
+    color = typer.colors.GREEN if status.available else typer.colors.BLUE
+    typer.secho(status.detail, fg=color)
+    if status.module_name:
+        typer.echo(f"Module: {status.module_name}")
+
+
+def main() -> None:
+    """Console-script entry point."""
+    app()

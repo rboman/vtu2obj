@@ -1,279 +1,150 @@
 # fossils-vtu2obj
 
-Convert FEM results stored in **VTK XML Unstructured Grid** files (`.vtu`) into:
+`fossils-vtu2obj` is a Python project for converting FEM results stored in
+**VTK XML Unstructured Grid** files (`.vtu`) into:
 
-- an extracted **surface mesh**,
-- an **OBJ** file with UV coordinates,
-- a **PNG texture** generated from a selected scalar field and colormap,
-- a matching **MTL** file for easy import in Blender.
+- an extracted surface mesh,
+- an OBJ file with UV coordinates,
+- a PNG palette texture generated from a selected scalar field,
+- and a matching MTL file for straightforward Blender import.
 
-The project is intended for post-processing results produced by the **fossils** finite element solver.
+The project targets post-processing workflows around the **fossils** finite
+element solver and keeps the core conversion pipeline **VTK-only**.
 
----
+## Status
 
-## Why this project exists
+The repository is currently bootstrapped for the first milestone:
 
-A current manual workflow is possible with ParaView and Blender:
+- modern `pyproject.toml` packaging with a `src/` layout,
+- a `typer` CLI skeleton,
+- modular package structure for the VTK pipeline,
+- a reserved `native/` area for a future optional `C++ + SWIG` bridge,
+- test scaffolding focused on deterministic logic.
 
-1. load the FEM results in ParaView,
-2. display a nodal scalar field with a chosen colormap and scalar range,
-3. extract the surface,
-4. export a colored mesh,
-5. import it into Blender,
-6. unwrap UVs,
-7. bake the colors into a PNG texture,
-8. export OBJ + PNG.
+The actual VTU inspection, surface extraction, texture generation, UV mapping,
+OBJ export, preview, and GUI behavior are still to be implemented in the next
+reviewable steps.
 
-The attached workflow note describes exactly that current path: surface extraction in ParaView, colored PLY export, Blender import, vertex-color material setup, UV unwrap, image creation, baking, then OBJ + PNG export. fileciteturn1file0 fileciteturn1file1
+## Design goals
 
-This repository aims to replace that manual chain with a **Python implementation whose core logic relies only on VTK**.
+- Use **VTK only** for geometry, scalar handling, color mapping, texture
+  generation, preview, and export whenever VTK supports it.
+- Keep the main package **Python-first**, so the CLI and conversion workflow
+  remain usable without any optional native extension.
+- Leave a clean path for a future **optional fossils bridge** implemented with
+  `C++ + SWIG`, without coupling the first milestone to a native build system.
 
----
+## Texture strategy
 
-## Main idea
+The project intentionally avoids diagonal-only textures.
 
-Instead of baking a full spatial texture atlas, this project uses a simpler and more robust approach:
+Instead, the conversion pipeline will generate a robust 2D palette texture:
 
-- extract the surface mesh,
-- choose a scalar field,
-- normalize and quantize scalar values,
-- generate a discrete palette texture as a PNG,
-- assign UV coordinates from the scalar values,
-- export OBJ + MTL + PNG.
+- texture width equals the number of discrete color bins,
+- each row repeats the same palette,
+- the scalar value is encoded in the `U` texture coordinate,
+- the `V` coordinate stays constant.
 
-This means the texture acts like a **color ramp texture**, while the UV coordinates encode the scalar value at each mesh point.
+This makes the exported OBJ/MTL/PNG set more stable under texture filtering in
+downstream tools such as Blender.
 
-### Why this is attractive
-
-- no ParaView dependency at runtime,
-- no Blender dependency at runtime,
-- no UV unwrapping step,
-- compact texture file,
-- reproducible and scriptable pipeline,
-- easy integration into a future GUI.
-
----
-
-## Proposed technical architecture
+## Project layout
 
 ```text
 .
 ├── AGENTS.md
 ├── README.md
 ├── pyproject.toml
+├── native/
+│   └── README.md
 ├── src/
 │   └── fossils_vtu2obj/
 │       ├── __init__.py
-│       ├── cli.py
-│       ├── model.py
-│       ├── io_vtk.py
+│       ├── __main__.py
 │       ├── arrays.py
-│       ├── surface.py
+│       ├── cli.py
 │       ├── colormaps.py
+│       ├── export_obj.py
+│       ├── io_vtk.py
+│       ├── logging_utils.py
+│       ├── model.py
+│       ├── preview.py
+│       ├── surface.py
 │       ├── texture.py
 │       ├── uvmap.py
-│       ├── export_obj.py
-│       ├── preview.py
+│       ├── integrations/
+│       │   ├── __init__.py
+│       │   └── fossils.py
 │       └── gui/
+│           ├── __init__.py
 │           ├── app.py
 │           ├── main_window.py
 │           └── vtk_view.py
 └── tests/
+    ├── conftest.py
     ├── test_arrays.py
+    ├── test_cli.py
+    ├── test_colormaps.py
+    ├── test_export_obj.py
+    ├── test_integrations.py
     ├── test_surface.py
     ├── test_texture.py
-    ├── test_uvmap.py
-    ├── test_export_obj.py
-    └── test_cli.py
+    └── test_uvmap.py
 ```
 
----
+## Why `setuptools` for the bootstrap
 
-## Scope
+The initial bootstrap uses `setuptools.build_meta` instead of `hatchling`.
 
-### Core features
+That choice keeps the first milestone simple while preserving an easier upgrade
+path toward a future optional native module. If the fossils bridge evolves into
+a real compiled extension, the repository can later move to
+`scikit-build-core` or another CMake-oriented backend without rewriting the
+Python package layout.
 
-- Read `.vtu` files with VTK.
-- Discover available point and cell arrays.
-- Extract the surface mesh.
-- Select a field to visualize.
-- Choose a colormap.
-- Set explicit `vmin` / `vmax`.
-- Quantize to a discrete number of colors.
-- Build a PNG texture with VTK.
-- Build UV coordinates from scalar values.
-- Export OBJ + MTL + PNG.
-- Preview the result with VTK.
+## Optional future native integration
 
-### Applications
+The future native integration is planned as an **optional bridge**, not as a
+replacement for the VTK conversion code.
 
-- **CLI** with `typer`
-- **GUI** with `PyQt5 + VTK`
-
-### Quality
-
-- tests,
-- editable install,
-- modern `pyproject.toml`,
-- optional dev dependencies,
-- clean modular code.
-
----
-
-## Colormap and texture strategy
-
-### Important design note
-
-A diagonal-only texture image is not ideal for interoperability because filtering and interpolation can sample unwanted texels.
-
-The recommended strategy is:
-
-- create a **2D palette texture**,
-- repeat the same discrete colormap on every row,
-- encode the scalar value into the **U** coordinate,
-- keep **V** constant.
-
-For example, with 256 colors:
-
-- texture size: `256 x 16` or `256 x 32`,
-- each vertical stripe corresponds to one color bin,
-- UV mapping uses the center of each bin.
-
-This is conceptually a 1D color ramp stored in a regular 2D PNG for broad compatibility.
-
----
-
-## Data assumptions
-
-The initial target is a `.vtu` file produced by `fossils`.
-
-Typical fields of interest include nodal scalar arrays such as:
-
-- `stress_von_mises`
-- `strain_von_mises`
-
-and possibly vector/tensor arrays such as displacement or full stress/strain tensors.
-
-Initial implementation can focus on **point-data scalar arrays** first. Cell-data support can be added just after the first milestone.
-
----
-
-## CLI design
-
-Suggested commands:
-
-```bash
-fossils-vtu2obj inspect post.vtu
-fossils-vtu2obj list-arrays post.vtu
-fossils-vtu2obj preview post.vtu --field stress_von_mises --colormap rainbow
-fossils-vtu2obj convert post.vtu out/model \
-  --field stress_von_mises \
-  --colormap rainbow \
-  --vmin 0 \
-  --vmax 120 \
-  --n-colors 256
-```
-
-### Expected outputs for `convert`
-
-For an output prefix `out/model`, the command should generate:
-
-- `out/model.obj`
-- `out/model.mtl`
-- `out/model.png`
-
----
-
-## GUI design
-
-A minimal PyQt5 GUI should provide:
-
-- file chooser,
-- array selector,
-- colormap selector,
-- scalar min/max controls,
-- preview widget,
-- export button.
-
-The first version does not need advanced UX. The priority is correctness and future extensibility.
-
----
-
-## Test strategy
-
-Focus on deterministic tests first:
-
-- discovering arrays in a dataset,
-- clamping and normalization,
-- quantization into discrete bins,
-- generated texture dimensions and colors,
-- generated UV coordinates,
-- surface extraction on a tiny synthetic mesh,
-- CLI smoke tests.
-
-Keep preview and GUI tests lightweight and optional if headless CI becomes fragile.
-
----
+- `src/fossils_vtu2obj/integrations/` is the Python-facing boundary.
+- `native/` is reserved for future `C++ + SWIG` sources and build files.
+- The default test suite and CLI must keep working even when no native bridge
+  is installed.
 
 ## Development setup
 
-Recommended install flows:
+Base install:
 
 ```bash
 pip install -e .
+```
+
+Development tools:
+
+```bash
 pip install -e .[dev]
+```
+
+GUI dependencies:
+
+```bash
 pip install -e .[gui]
 ```
 
-Recommended tooling:
+## Near-term roadmap
 
-- `pytest`
-- `ruff`
-- type hints where practical
+1. Implement VTU loading, dataset inspection, and surface extraction.
+2. Implement colormaps, palette texture generation, UV mapping, and OBJ export.
+3. Implement VTK preview and the minimal PyQt5 GUI.
+4. Evaluate whether a future fossils bridge belongs as an optional native
+   extension.
 
----
+## Trade-offs in the bootstrap
 
-## Roadmap
-
-### Milestone 1
-
-- package skeleton,
-- pyproject,
-- CLI skeleton,
-- load VTU,
-- list arrays,
-- extract surface,
-- preview scalar field.
-
-### Milestone 2
-
-- colormaps,
-- discrete texture PNG,
-- scalar-to-UV mapping,
-- OBJ + MTL export.
-
-### Milestone 3
-
-- minimal GUI,
-- stronger tests,
-- examples and polish.
-
----
-
-## Non-goals for the first iteration
-
-- full ParaView colormap parity,
-- advanced texture baking,
-- physically based materials,
-- support for every VTK dataset type,
-- optimized performance for very large models.
-
----
-
-## Notes for contributors and coding agents
-
-- Keep the core conversion logic VTK-only.
-- Prefer small reviewable commits.
-- Do not add mesh libraries unless explicitly requested.
-- Document trade-offs honestly.
-- Prioritize correctness, simplicity, and maintainability.
+- The repository is intentionally not wired to CMake yet, even though a future
+  `C++ + SWIG` bridge is anticipated.
+- GUI modules exist from day one, but they remain lazily imported so the base
+  package does not require `PyQt5`.
+- The CLI commands are present early for a stable user-facing shape, but their
+  heavy behavior is deferred to the next milestones.

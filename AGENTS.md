@@ -2,50 +2,44 @@
 
 ## Mission
 
-Build a **Python package and applications** that convert a **VTK XML Unstructured Grid (`.vtu`)** containing FEM results into:
+Build a **Python package and applications** that convert a
+**VTK XML Unstructured Grid (`.vtu`)** containing FEM results into:
 
-- a **surface mesh** exported as **OBJ**,
-- a **PNG texture** representing a chosen scalar field with a chosen colormap,
-- optionally a matching **MTL** file so the OBJ can be loaded directly in Blender.
+- a surface mesh exported as OBJ,
+- a PNG texture representing a chosen scalar field with a chosen colormap,
+- and a matching MTL file so the OBJ can be loaded directly in Blender.
 
-The project starts from an empty GitHub repository.
-
-The tool is intended for FEM post-processing of results produced by the **fossils** solver.
-
----
+The tool is intended for FEM post-processing of results produced by the
+**fossils** solver.
 
 ## Product goals
 
-1. Read a `.vtu` file containing point data and/or cell data.
-2. Extract the **surface mesh** using a VTK-only pipeline.
-3. Let the user choose:
-   - the scalar field to visualize,
-   - the colormap,
-   - the scalar range `[vmin, vmax]`,
-   - the number of discrete color bins (default: 256).
-4. Generate a **texture PNG** from the selected colormap.
-5. Generate **texture coordinates** on the mesh from scalar values.
-6. Export the surface mesh as **OBJ** with UVs and a matching **MTL** referencing the PNG.
-7. Provide a **fast preview** using VTK.
-8. Provide both:
-   - a **CLI** based on `typer`,
-   - a **GUI** based on **PyQt5 + VTK**.
-9. Include **tests**, clean packaging, and a professional project layout.
-
----
+1. Read a `.vtu` file containing point data and later cell data.
+2. Extract the surface mesh using a VTK-only pipeline.
+3. Let the user choose the scalar field, colormap, scalar range, and number of
+   discrete color bins.
+4. Generate a palette PNG texture from the selected colormap.
+5. Generate texture coordinates on the mesh from scalar values.
+6. Export the surface mesh as OBJ with UVs and a matching MTL referencing the
+   PNG.
+7. Provide a fast preview using VTK.
+8. Provide both a CLI based on `typer` and a GUI based on `PyQt5 + VTK`.
+9. Keep the repository extensible toward an optional future `C++ + SWIG`
+   fossils bridge.
 
 ## Non-negotiable constraints
 
 ### Core conversion stack
 
-The **core conversion logic must use only VTK** for geometry, scalar processing, lookup tables, texture generation, preview, and file export whenever VTK supports it.
+The core conversion logic must use only **VTK** for:
 
-That means:
-
-- use VTK readers/writers/filters,
-- use VTK lookup tables / color transfer functions,
-- use VTK image generation for the texture,
-- use VTK rendering for preview.
+- reading the `.vtu`,
+- extracting the surface,
+- managing scalar fields,
+- generating the PNG texture,
+- generating UV coordinates,
+- preview rendering,
+- and exporting the result whenever VTK supports it.
 
 ### Allowed supporting libraries
 
@@ -57,20 +51,22 @@ These are allowed outside the core conversion logic:
 - standard library modules,
 - light dev tooling such as `ruff`.
 
-Do **not** introduce ParaView, Blender Python APIs, `meshio`, `trimesh`, `pyvista`, `matplotlib`, or other mesh/visualization libraries unless the user explicitly asks for them.
-
----
+Do **not** add ParaView, Blender Python APIs, `pyvista`, `meshio`, `trimesh`,
+`matplotlib`, or other mesh/visualization libraries unless the user explicitly
+asks for them.
 
 ## Important design decision about the texture
 
-The user initially described a diagonal-coded PNG texture. For robustness and interoperability, prefer the following design:
+Do not implement a diagonal-only texture image.
 
-- generate a **2D palette texture** where each row repeats the same 1D discrete colormap,
-- assign UV coordinates from the normalized scalar value:
-  - `u = scalar_to_bin_center(s)`
-  - `v = 0.5` (or any constant row center)
+Implement a 2D palette texture where:
 
-This is better than a diagonal-only texture because it is more stable under interpolation and filtering in downstream tools.
+- each row repeats the same 1D discrete colormap,
+- `u = scalar_to_bin_center(s)`,
+- `v` is constant, typically the middle of the texture.
+
+This is more robust than a diagonal-only texture under interpolation and
+filtering in downstream tools.
 
 ### Required implementation choice
 
@@ -78,20 +74,28 @@ Implement the texture as:
 
 - width = `n_colors` or a padded multiple,
 - height = at least `8` or `16` pixels,
-- each vertical stripe corresponds to one discrete color bin,
-- every row repeats the same stripe pattern.
+- one vertical stripe per color bin,
+- identical rows repeating the same stripe pattern.
 
-Optionally support a “padded” mode later to reduce color bleeding.
+## Python-first plus optional native bridge
 
----
+The repository should remain **Python-first**. The conversion workflow must be
+usable without any native module.
+
+However, the initial structure must leave a clean path for an optional future
+`C++ + SWIG` integration with fossils:
+
+- keep the VTK conversion logic inside `src/fossils_vtu2obj/`,
+- reserve `src/fossils_vtu2obj/integrations/` for optional bridges,
+- reserve `native/` for future compiled sources and build files,
+- avoid tight coupling between the CLI and any future native extension.
+
+The native bridge is expected to be optional and should not replace the VTK
+pipeline.
 
 ## Expected architecture
 
-Use a `src/` layout.
-
-Suggested package name:
-
-- `fossils_vtu2obj`
+Use a `src/` layout and bootstrap with `setuptools`.
 
 Suggested structure:
 
@@ -100,9 +104,12 @@ Suggested structure:
 ├── AGENTS.md
 ├── README.md
 ├── pyproject.toml
+├── native/
+│   └── README.md
 ├── src/
 │   └── fossils_vtu2obj/
 │       ├── __init__.py
+│       ├── __main__.py
 │       ├── cli.py
 │       ├── logging_utils.py
 │       ├── model.py
@@ -114,26 +121,27 @@ Suggested structure:
 │       ├── uvmap.py
 │       ├── export_obj.py
 │       ├── preview.py
+│       ├── integrations/
+│       │   ├── __init__.py
+│       │   └── fossils.py
 │       └── gui/
 │           ├── __init__.py
 │           ├── app.py
 │           ├── main_window.py
 │           └── vtk_view.py
 ├── tests/
+│   ├── conftest.py
 │   ├── test_arrays.py
+│   ├── test_cli.py
 │   ├── test_colormaps.py
-│   ├── test_texture.py
-│   ├── test_uvmap.py
-│   ├── test_surface.py
 │   ├── test_export_obj.py
-│   └── test_cli.py
+│   ├── test_integrations.py
+│   ├── test_surface.py
+│   ├── test_texture.py
+│   └── test_uvmap.py
 └── examples/
     └── README.md
 ```
-
-This exact structure may be adjusted if needed, but keep the code modular.
-
----
 
 ## Functional requirements
 
@@ -144,101 +152,60 @@ Implement functions to:
 - load a `.vtu` unstructured grid,
 - list available point data arrays,
 - list available cell data arrays,
-- report number of points/cells,
-- identify scalar/vector/tensor arrays,
+- report number of points and cells,
+- identify scalar, vector, and tensor arrays,
 - validate that a requested field exists.
 
 ### 2. Surface extraction
 
 Use a VTK pipeline equivalent to:
 
-- `vtkXMLUnstructuredGridReader`
-- `vtkDataSetSurfaceFilter`
-- `vtkTriangleFilter` (if needed)
-- normal generation only if helpful for downstream rendering
+- `vtkXMLUnstructuredGridReader`,
+- `vtkDataSetSurfaceFilter`,
+- `vtkTriangleFilter` when needed.
 
-Keep scalar arrays on the surface if possible.
+Keep scalar arrays on the extracted surface whenever possible.
 
 ### 3. Field selection and scalar preparation
 
 Support at minimum:
 
 - point-data scalar fields,
-- optional cell-data support later.
-
-If cell data is selected, either:
-
-- convert cell data to point data with VTK, or
-- clearly document the current limitation.
-
-Scalars must support:
-
 - automatic min/max,
 - user-defined min/max,
 - clamping outside the selected range,
 - quantization to `n_colors` bins.
 
+Cell-data support can follow later.
+
 ### 4. Colormap support
 
-Provide a colormap module with a few named presets, for example:
+Provide VTK-native colormap presets such as:
 
-- `rainbow`
-- `viridis_like`
-- `cool_to_warm`
-- `grayscale`
+- `rainbow`,
+- `viridis_like`,
+- `cool_to_warm`,
+- `grayscale`.
 
-If exact matplotlib colormaps are not available through VTK alone, create close VTK-native equivalents and document them honestly.
-
-The API should expose:
-
-- a VTK lookup table or color transfer function,
-- conversion from normalized scalar to RGB,
-- generation of the discrete palette texture.
+If a colormap is only an approximation, document that honestly.
 
 ### 5. Texture generation
 
-Generate a PNG texture using VTK image classes.
-
-Requirements:
-
-- discrete palette with configurable `n_colors` (default 256),
-- RGBA or RGB PNG,
-- repeat the palette along rows,
-- write with `vtkPNGWriter`.
+Generate a PNG texture using VTK image classes and `vtkPNGWriter`.
 
 ### 6. UV generation from scalar values
 
-Create texture coordinates per point from the chosen scalar field.
-
-Requirements:
-
-- clamp and normalize scalar values,
-- quantize to bins for the discrete texture,
-- store UV coordinates as point data texture coordinates,
-- ensure the exported OBJ contains usable UVs.
+Create texture coordinates per point from the chosen scalar field, using clamp,
+normalize, quantize, and bin-center mapping.
 
 ### 7. OBJ/MTL export
 
-Export the final surface polydata with UVs to OBJ.
-
-Requirements:
-
-- geometry must be the extracted surface,
-- UV coordinates must be present,
-- normals should be written if convenient,
-- write a matching `.mtl` file that references the generated PNG.
-
-If VTK does not directly write everything needed for the MTL, write the small MTL text file manually.
+Export the final surface polydata with UVs to OBJ and write a matching MTL that
+references the texture PNG.
 
 ### 8. Preview
 
-Implement VTK preview modes:
-
-- scalar-colored preview using the lookup table,
-- textured preview using the generated UVs + texture,
-- optional wireframe toggle later.
-
-Support offscreen rendering only if easy, but do not over-engineer it initially.
+Implement VTK preview modes for scalar-colored and textured rendering.
 
 ### 9. CLI
 
@@ -249,42 +216,20 @@ Create a `typer` CLI with subcommands such as:
 - `preview`
 - `convert`
 
-Example desired UX:
-
-```bash
-fossils-vtu2obj inspect post.vtu
-fossils-vtu2obj list-arrays post.vtu
-fossils-vtu2obj preview post.vtu --field stress_von_mises --colormap rainbow
-fossils-vtu2obj convert post.vtu out/model \
-  --field stress_von_mises \
-  --colormap rainbow \
-  --vmin 0 \
-  --vmax 120 \
-  --n-colors 256
-```
-
 ### 10. GUI
 
-Provide a minimal but functional PyQt5 GUI.
-
-Required elements:
+Provide a minimal PyQt5 GUI with:
 
 - file open button,
-- combo box for field selection,
-- combo box for colormap selection,
+- field selector,
+- colormap selector,
 - min/max controls,
 - export button,
 - VTK render widget.
 
-The GUI can be minimal at first. Prefer a clean architecture over visual polish.
-
----
-
 ## Testing requirements
 
-Tests must focus first on deterministic, non-GUI logic.
-
-Priority tests:
+Prioritize deterministic non-GUI logic:
 
 1. array discovery,
 2. scalar normalization and clamping,
@@ -294,27 +239,24 @@ Priority tests:
 6. surface extraction on a tiny synthetic dataset,
 7. CLI smoke tests.
 
-If headless rendering is flaky in CI, mark preview/GUI tests separately and keep the main test suite robust.
-
-Also create at least one tiny synthetic VTK dataset in tests rather than depending only on large external fixtures.
-
----
+Also verify that the absence of the optional native bridge does not break
+imports or the CLI.
 
 ## Tooling requirements
 
-Set up a professional Python project:
+Set up a professional Python project with:
 
-- `pyproject.toml`
-- editable install support
-- console script entry point
-- optional extras such as `[dev]` and `[gui]`
-- `pytest`
-- `ruff`
-- basic type hints where practical
+- `pyproject.toml`,
+- editable install support,
+- console script entry point,
+- optional extras such as `[dev]` and `[gui]`,
+- `pytest`,
+- `ruff`,
+- basic type hints where practical.
 
-Prefer straightforward, maintainable tooling over cleverness.
-
----
+Bootstrap with `setuptools.build_meta`. If a future native bridge becomes more
+than a thin optional layer, the repository may later migrate to
+`scikit-build-core`.
 
 ## Iteration strategy
 
@@ -327,8 +269,8 @@ Bootstrap repository:
 - packaging,
 - package skeleton,
 - CLI skeleton,
-- README,
-- tests scaffold.
+- tests scaffold,
+- optional native bridge scaffolding.
 
 ### Phase 2
 
@@ -336,21 +278,16 @@ Implement inspection and surface extraction.
 
 ### Phase 3
 
-Implement colormaps, texture generation, UV mapping.
+Implement colormaps, texture generation, UV mapping, and export.
 
 ### Phase 4
 
-Implement OBJ/MTL export and preview.
+Implement preview and the minimal GUI.
 
 ### Phase 5
 
-Implement minimal GUI.
-
-### Phase 6
-
-Polish tests, docs, and examples.
-
----
+If needed, add an optional fossils bridge in `native/` and expose it through
+`fossils_vtu2obj.integrations.fossils`.
 
 ## Coding style
 
@@ -358,45 +295,15 @@ Polish tests, docs, and examples.
 - Prefer explicit names.
 - Add docstrings to public functions.
 - Avoid hidden global state.
-- Use dataclasses for structured options/results when helpful.
+- Use dataclasses for structured options and results when helpful.
 - Prefer pure functions for scalar mapping logic.
-
----
-
-## Definition of done for the first meaningful milestone
-
-A first milestone is complete when all of the following are true:
-
-1. The package installs with `pip install -e .[dev]`.
-2. `fossils-vtu2obj list-arrays post.vtu` works.
-3. `fossils-vtu2obj preview post.vtu --field stress_von_mises` opens a VTK preview.
-4. `fossils-vtu2obj convert post.vtu out/model --field stress_von_mises` writes:
-   - `model.obj`
-   - `model.mtl`
-   - `model.png`
-5. The exported mesh loads in Blender with the texture.
-6. Tests pass.
-
----
-
-## Things to avoid
-
-- Do not rewrite the whole project in one giant step.
-- Do not add unnecessary dependencies.
-- Do not silently degrade behavior.
-- Do not claim exact colormap equivalence unless it is true.
-- Do not implement a fake preview; use real VTK rendering.
-- Do not rely on ParaView or Blender for any runtime conversion step.
-
----
 
 ## When uncertain
 
-If a technical point is ambiguous, choose the simplest implementation that preserves:
+Choose the simplest implementation that preserves:
 
 1. VTK-only core logic,
 2. correct UV-based texturing,
 3. maintainable code,
-4. reproducible CLI behavior.
-
-Document trade-offs in the README.
+4. reproducible CLI behavior,
+5. optional-native extensibility without coupling the core package to fossils.
