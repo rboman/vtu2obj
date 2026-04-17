@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
@@ -49,6 +51,68 @@ from .icons import create_app_icon, standard_icon
 from .viewport_panel import MeshViewportPanel
 
 
+@dataclass(frozen=True)
+class _LoadedFileResult:
+    """Hold the data produced by one VTU loading task."""
+
+    current_file_path: Path
+    grid: object
+    summary: DatasetSummary
+    surface: object
+    scalar_names: tuple[str, ...]
+    selected_field: str
+    field_range: tuple[float, float]
+    scene: object | None = None
+
+
+@dataclass(frozen=True)
+class _LoadedObjBundleResult:
+    """Hold the data produced by one OBJ bundle loading task."""
+
+    bundle: object
+    scene: object
+
+
+@dataclass(frozen=True)
+class _ExportBundleResult:
+    """Hold the data produced by one OBJ export task."""
+
+    bundle: object
+    scene: object
+
+
+class _BackgroundTaskWorker(QtCore.QObject):
+    """Run one long-running callable in a dedicated Qt thread."""
+
+    progress = QtCore.pyqtSignal(int, str)
+    succeeded = QtCore.pyqtSignal(object)
+    failed = QtCore.pyqtSignal(str)
+    finished = QtCore.pyqtSignal()
+
+    def __init__(
+        self,
+        task_fn: Callable[[Callable[[int, str], None]], object],
+    ) -> None:
+        super().__init__()
+        self._task_fn = task_fn
+
+    @QtCore.pyqtSlot()
+    def run(self) -> None:
+        """Execute the background callable and emit its outcome."""
+        try:
+            result = self._task_fn(self._emit_progress)
+        except Exception as exc:  # pragma: no cover - defensive GUI path
+            self.failed.emit(str(exc))
+        else:
+            self.succeeded.emit(result)
+        finally:
+            self.finished.emit()
+
+    def _emit_progress(self, value: int, label_text: str) -> None:
+        """Forward one progress update to the GUI thread."""
+        self.progress.emit(value, label_text)
+
+
 class MainWindow(QtWidgets.QMainWindow):
     """GUI for inspecting VTU files and comparing them with exported OBJ bundles."""
 
@@ -86,6 +150,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self._current_bundle = None
         self._current_bundle_scene = None
         self._enable_vtk_view = enable_vtk_view
+        self._active_thread: QtCore.QThread | None = None
+        self._active_worker: _BackgroundTaskWorker | None = None
+        self._active_progress_dialog: QtWidgets.QProgressDialog | None = None
+        self._startup_file_path: str | Path | None = None
+        self._startup_bundle_path: str | Path | None = None
         self._settings = settings or QtCore.QSettings(
             QtCore.QSettings.IniFormat,
             QtCore.QSettings.UserScope,
@@ -99,21 +168,18 @@ class MainWindow(QtWidgets.QMainWindow):
         self._set_controls_enabled(False)
 
         if initial_path is not None:
-            self.load_file(initial_path, refresh=True)
+            self._startup_file_path = initial_path
         else:
             last_file = self._settings.value("last_file_path")
             if last_file:
-                try:
-                    self.load_file(last_file, refresh=True)
-                except (FileNotFoundError, TypeError, ValueError, RuntimeError):
-                    pass
+                self._startup_file_path = last_file
 
         last_obj_bundle_path = self._settings.value("last_obj_bundle_path")
         if last_obj_bundle_path:
-            try:
-                self.load_obj_bundle(last_obj_bundle_path)
-            except (FileNotFoundError, TypeError, ValueError, RuntimeError):
-                pass
+            self._startup_bundle_path = last_obj_bundle_path
+
+        if self._startup_file_path is not None or self._startup_bundle_path is not None:
+            QtCore.QTimer.singleShot(0, self._start_deferred_startup_tasks)
 
     def _build_ui(self) -> None:
         """Create the window layout and interactive controls."""
@@ -201,7 +267,9 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self.export_bundle_action.setStatusTip(
             self.export_bundle_action.toolTip())
-        self.export_bundle_action.triggered.connect(self.export_current_bundle)
+        self.export_bundle_action.triggered.connect(
+            self.start_export_current_bundle_async
+        )
 
         self.reset_defaults_action = QtWidgets.QAction(
             standard_icon(self, QtWidgets.QStyle.SP_BrowserReload),
@@ -386,7 +454,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.export_button = QtWidgets.QPushButton("Export OBJ/MTL/PNG...")
         self.export_button.setIcon(self.export_bundle_action.icon())
         self.export_button.setToolTip(self.export_bundle_action.toolTip())
-        self.export_button.clicked.connect(self.export_current_bundle)
+        self.export_button.clicked.connect(self.start_export_current_bundle_async)
         layout.addWidget(self.export_button, 3, 4, 1, 2)
 
         return group
@@ -613,6 +681,34 @@ class MainWindow(QtWidgets.QMainWindow):
         directory = selected_path.parent if selected_path.suffix else selected_path
         self._settings.setValue(key, str(directory.resolve(strict=False)))
 
+    def _set_busy_state(self, busy: bool) -> None:
+        """Enable or disable user actions while one background task is running."""
+        is_dataset_ready = (
+            self._current_grid is not None and self.field_combo.count() > 0
+        )
+
+        self.open_button.setEnabled(not busy)
+        self.open_obj_button.setEnabled(not busy)
+        self.open_vtu_action.setEnabled(not busy)
+        self.open_obj_action.setEnabled(not busy)
+        self.reset_defaults_action.setEnabled(not busy)
+
+        self.field_combo.setEnabled(not busy and is_dataset_ready)
+        self.colormap_combo.setEnabled(not busy and is_dataset_ready)
+        self.n_colors_spin.setEnabled(not busy and is_dataset_ready)
+        self.normals_checkbox.setEnabled(not busy and is_dataset_ready)
+        self.vmin_spin.setEnabled(not busy and is_dataset_ready)
+        self.vmax_spin.setEnabled(not busy and is_dataset_ready)
+        self.reset_range_button.setEnabled(not busy and is_dataset_ready)
+        self.refresh_button.setEnabled(not busy and is_dataset_ready)
+        self.export_button.setEnabled(not busy and is_dataset_ready)
+        self.export_bundle_action.setEnabled(not busy and is_dataset_ready)
+
+        if busy:
+            QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
+        else:
+            QtWidgets.QApplication.restoreOverrideCursor()
+
     def _create_progress_dialog(
         self,
         label_text: str,
@@ -641,6 +737,303 @@ class MainWindow(QtWidgets.QMainWindow):
         dialog.setLabelText(label_text)
         dialog.setValue(value)
         QtWidgets.QApplication.processEvents()
+
+    @staticmethod
+    def _load_file_task(
+        path: str | Path,
+        *,
+        refresh: bool,
+        last_field: str,
+        colormap: str,
+        n_colors: int,
+        progress: Callable[[int, str], None],
+    ) -> _LoadedFileResult:
+        """Load one VTU file and optionally prepare the first volume scene."""
+        current_file_path = Path(path).expanduser().resolve(strict=False)
+        progress(0, "Reading VTU file...")
+        grid = load_unstructured_grid(current_file_path)
+
+        progress(1, "Inspecting dataset arrays...")
+        summary = summarize_unstructured_grid(grid, current_file_path)
+
+        progress(2, "Extracting surface mesh...")
+        surface = extract_surface(grid, triangulate=True)
+
+        scalar_names = scalar_field_names(summary)
+        if not scalar_names:
+            raise ValueError(
+                "The selected VTU file does not contain scalar point or cell data."
+            )
+
+        if last_field and last_field in scalar_names:
+            selected_field = last_field
+        else:
+            selected_field = preferred_scalar_field_name(
+                summary,
+                preferred_name=DEFAULT_PREFERRED_SCALAR_FIELD_NAME,
+            )
+            if selected_field is None:
+                raise RuntimeError("Failed to resolve a default scalar field.")
+
+        _, scalar_array = resolve_dataset_scalar_field(grid, selected_field)
+        field_range = tuple(float(value) for value in scalar_array.GetRange())
+
+        scene = None
+        if refresh:
+            progress(3, "Building volume preview...")
+            scene = build_volume_preview_scene(
+                grid,
+                selected_field,
+                source_path=current_file_path,
+                colormap=colormap,
+                n_colors=n_colors,
+            )
+
+        return _LoadedFileResult(
+            current_file_path=current_file_path,
+            grid=grid,
+            summary=summary,
+            surface=surface,
+            scalar_names=scalar_names,
+            selected_field=selected_field,
+            field_range=field_range,
+            scene=scene,
+        )
+
+    @staticmethod
+    def _load_obj_bundle_task(
+        path: str | Path,
+        *,
+        progress: Callable[[int, str], None],
+    ) -> _LoadedObjBundleResult:
+        """Load one OBJ/MTL/PNG bundle and prepare its preview scene."""
+        progress(0, "Resolving OBJ, MTL, and texture files...")
+        bundle = resolve_obj_bundle_paths(path)
+        progress(1, "Building textured OBJ preview...")
+        scene = build_obj_bundle_preview_scene(bundle)
+        return _LoadedObjBundleResult(bundle=bundle, scene=scene)
+
+    @staticmethod
+    def _export_bundle_task(
+        surface: object,
+        field_name: str,
+        output_prefix: str | Path,
+        *,
+        colormap: str,
+        vmin: float,
+        vmax: float,
+        n_colors: int,
+        generate_normals: bool,
+        progress: Callable[[int, str], None],
+    ) -> _ExportBundleResult:
+        """Export one OBJ bundle and prepare the bundle preview scene."""
+        progress(0, "Generating scalar UV coordinates...")
+        textured_surface = apply_scalar_uv_map(
+            surface,
+            field_name,
+            vmin=vmin,
+            vmax=vmax,
+            n_colors=n_colors,
+        )
+
+        progress(1, "Building palette texture PNG...")
+        texture_image = build_palette_texture(
+            colormap,
+            n_colors=n_colors,
+        )
+
+        progress(2, "Preparing surface for OBJ export...")
+        if generate_normals:
+            textured_surface = generate_surface_normals(textured_surface)
+
+        progress(3, "Writing OBJ, MTL, and PNG files...")
+        bundle = export_obj_bundle(textured_surface, output_prefix, texture_image)
+
+        progress(4, "Building textured preview of the exported bundle...")
+        scene = build_obj_bundle_preview_scene(bundle.obj_path)
+        return _ExportBundleResult(bundle=bundle, scene=scene)
+
+    def _run_background_task(
+        self,
+        *,
+        title: str,
+        maximum: int,
+        task_fn: Callable[[Callable[[int, str], None]], object],
+        on_success: Callable[[object], None],
+    ) -> None:
+        """Run one background task and wire its lifecycle to the GUI."""
+        if self._active_thread is not None:
+            self.statusBar().showMessage(
+                "Please wait for the current operation to finish."
+            )
+            return
+
+        progress_dialog = self._create_progress_dialog(title, maximum)
+        thread = QtCore.QThread(self)
+        worker = _BackgroundTaskWorker(task_fn)
+        worker.moveToThread(thread)
+
+        self._active_thread = thread
+        self._active_worker = worker
+        self._active_progress_dialog = progress_dialog
+        self._set_busy_state(True)
+
+        thread.started.connect(worker.run)
+        worker.progress.connect(
+            lambda value, label: self._update_progress(progress_dialog, value, label)
+        )
+        worker.succeeded.connect(on_success)
+        worker.failed.connect(self._show_error)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(progress_dialog.close)
+        worker.finished.connect(lambda: self._set_busy_state(False))
+        worker.finished.connect(lambda: setattr(self, "_active_worker", None))
+        worker.finished.connect(lambda: setattr(self, "_active_progress_dialog", None))
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(lambda: setattr(self, "_active_thread", None))
+        thread.start()
+
+    def _start_deferred_startup_tasks(self) -> None:
+        """Kick off any deferred startup loading after the main window appears."""
+        startup_file = self._startup_file_path
+        startup_bundle = self._startup_bundle_path
+        self._startup_file_path = None
+        self._startup_bundle_path = None
+
+        if startup_file is not None:
+            self.start_load_file_async(
+                startup_file,
+                refresh=True,
+                startup_bundle_path=startup_bundle,
+            )
+            return
+
+        if startup_bundle is not None:
+            self.start_load_obj_bundle_async(startup_bundle)
+
+    def start_load_file_async(
+        self,
+        path: str | Path,
+        *,
+        refresh: bool = True,
+        startup_bundle_path: str | Path | None = None,
+    ) -> None:
+        """Defer one VTU load until after the GUI is visible, then run it safely."""
+        try:
+            self.load_file(path, refresh=refresh, show_progress=True)
+        except (FileNotFoundError, TypeError, ValueError, RuntimeError) as exc:
+            self._show_error(str(exc))
+            return
+
+        if startup_bundle_path is not None:
+            QtCore.QTimer.singleShot(
+                0,
+                lambda: self.start_load_obj_bundle_async(startup_bundle_path),
+            )
+
+    def start_load_obj_bundle_async(self, path: str | Path) -> None:
+        """Defer one OBJ bundle load and execute it with GUI feedback."""
+        try:
+            self.load_obj_bundle(path, show_progress=True)
+        except (FileNotFoundError, TypeError, ValueError, RuntimeError) as exc:
+            self._show_error(str(exc))
+
+    def start_export_current_bundle_async(self) -> None:
+        """Export the current bundle with progress feedback on the GUI thread."""
+        try:
+            self.export_current_bundle()
+        except (FileNotFoundError, TypeError, ValueError, RuntimeError) as exc:
+            self._show_error(str(exc))
+
+    def _handle_loaded_file_result(
+        self,
+        result: object,
+        *,
+        startup_bundle_path: str | Path | None = None,
+    ) -> None:
+        """Apply one completed VTU loading task to the GUI."""
+        self._apply_loaded_file_result(result)
+        if startup_bundle_path is not None:
+            QtCore.QTimer.singleShot(
+                0,
+                lambda: self.start_load_obj_bundle_async(startup_bundle_path),
+            )
+
+    def _apply_loaded_file_result(
+        self,
+        result: object,
+        *,
+        preserve_camera_state: dict[str, object] | None = None,
+    ) -> None:
+        """Apply one file-loading result to the current GUI state."""
+        if not isinstance(result, _LoadedFileResult):
+            raise TypeError("Unexpected VTU loading result.")
+
+        self.current_file_path = result.current_file_path
+        self._current_grid = result.grid
+        self._current_summary = result.summary
+        self._current_surface = result.surface
+        self._current_volume_scene = result.scene
+
+        self.vtu_path_edit.setText(str(self.current_file_path))
+        self.field_combo.blockSignals(True)
+        self.field_combo.clear()
+        self.field_combo.addItems(list(result.scalar_names))
+        self.field_combo.setCurrentText(result.selected_field)
+        self.field_combo.blockSignals(False)
+        self.vmin_spin.setValue(result.field_range[0])
+        self.vmax_spin.setValue(result.field_range[1])
+        self._set_controls_enabled(True)
+        self._remember_directory("last_vtu_directory", self.current_file_path)
+
+        if result.scene is not None:
+            self.volume_panel.set_scene(
+                result.scene,
+                preserve_camera_state=preserve_camera_state,
+            )
+
+        self.statusBar().showMessage(f"Loaded {self.current_file_path.name}")
+        self._save_settings()
+
+    def _handle_loaded_obj_bundle_result(self, result: object) -> None:
+        """Apply one completed OBJ loading task to the GUI."""
+        if not isinstance(result, _LoadedObjBundleResult):
+            raise TypeError("Unexpected OBJ bundle loading result.")
+
+        self._current_bundle = result.bundle
+        self._current_bundle_scene = result.scene
+        self.obj_path_edit.setText(str(result.bundle.obj_path))
+        self.bundle_panel.set_scene(result.scene)
+        self._remember_directory("last_obj_bundle_directory", result.bundle.obj_path)
+        self.statusBar().showMessage(f"Loaded OBJ bundle {result.bundle.obj_path.name}")
+        self._save_settings()
+
+    def _handle_export_result(self, result: object) -> None:
+        """Apply one completed export task to the GUI."""
+        if not isinstance(result, _ExportBundleResult):
+            raise TypeError("Unexpected export result.")
+
+        self._current_bundle = result.bundle
+        self._current_bundle_scene = result.scene
+        self.obj_path_edit.setText(str(result.bundle.obj_path))
+        self.bundle_panel.set_scene(result.scene)
+        self._remember_directory("last_export_directory", result.bundle.obj_path)
+        self._remember_directory("last_obj_bundle_directory", result.bundle.obj_path)
+        self.statusBar().showMessage(
+            f"Exported bundle to {result.bundle.obj_path.parent}"
+        )
+        QtWidgets.QMessageBox.information(
+            self,
+            "Export complete",
+            "\n".join(
+                [
+                    f"OBJ: {result.bundle.obj_path}",
+                    f"MTL: {result.bundle.mtl_path}",
+                    f"PNG: {result.bundle.texture_path}",
+                ]
+            ),
+        )
+        self._save_settings()
 
     def reset_gui_defaults(self) -> None:
         """Forget persisted GUI settings and restore the built-in defaults."""
@@ -736,10 +1129,7 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         if not file_name:
             return
-        try:
-            self.load_file(file_name, refresh=True)
-        except (FileNotFoundError, TypeError, ValueError, RuntimeError) as exc:
-            self._show_error(str(exc))
+        self.start_load_file_async(file_name, refresh=True)
 
     def open_obj_bundle_dialog(self) -> None:
         """Prompt the user for an OBJ bundle and load it into the right viewport."""
@@ -756,10 +1146,7 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         if not file_name:
             return
-        try:
-            self.load_obj_bundle(file_name)
-        except (FileNotFoundError, TypeError, ValueError, RuntimeError) as exc:
-            self._show_error(str(exc))
+        self.start_load_obj_bundle_async(file_name)
 
     def load_file(
         self,
@@ -769,70 +1156,38 @@ class MainWindow(QtWidgets.QMainWindow):
         show_progress: bool = True,
     ) -> None:
         """Load a VTU file, populate controls, and optionally refresh the view."""
-        progress = (
-            self._create_progress_dialog(
-                "Loading VTU file...",
-                4 if refresh else 3,
-            )
+        progress_dialog = (
+            self._create_progress_dialog("Loading VTU file...", 4 if refresh else 3)
             if show_progress
             else None
         )
-
-        input_path = Path(path).expanduser()
         try:
-            self.current_file_path = input_path.resolve(strict=False)
-            if progress is not None:
-                self._update_progress(progress, 0, "Reading VTU file...")
-
-            self._current_grid = load_unstructured_grid(self.current_file_path)
-            if progress is not None:
-                self._update_progress(progress, 1, "Inspecting dataset arrays...")
-
-            self._current_summary = summarize_unstructured_grid(
-                self._current_grid,
-                self.current_file_path,
-            )
-            if progress is not None:
-                self._update_progress(progress, 2, "Extracting surface mesh...")
-
-            self._current_surface = extract_surface(
-                self._current_grid, triangulate=True)
-
-            scalar_names = scalar_field_names(self._current_summary)
-            if not scalar_names:
-                raise ValueError(
-                    "The selected VTU file does not contain scalar point or cell data."
+            result = self._load_file_task(
+                path,
+                refresh=refresh,
+                last_field=str(self._settings.value("last_field", "")).strip(),
+                colormap=self.colormap_combo.currentText(),
+                n_colors=self.n_colors_spin.value(),
+                progress=(
+                    lambda value, label: self._update_progress(
+                        progress_dialog,
+                        value,
+                        label,
+                    )
                 )
-
-            self.vtu_path_edit.setText(str(self.current_file_path))
-            self.field_combo.blockSignals(True)
-            self.field_combo.clear()
-            self.field_combo.addItems(list(scalar_names))
-            startup_field = self._selected_startup_field_name()
-            if startup_field is not None:
-                self.field_combo.setCurrentText(startup_field)
-            self.field_combo.blockSignals(False)
-
-            self._set_controls_enabled(True)
-            self.reset_current_range()
-            self._remember_directory("last_vtu_directory", self.current_file_path)
-            self.statusBar().showMessage(f"Loaded {self.current_file_path.name}")
-            self._save_settings()
-
-            if refresh:
-                if progress is not None:
-                    self._update_progress(progress, 3, "Building volume preview...")
-                self.refresh_preview()
-
-            if progress is not None:
+                if progress_dialog is not None
+                else (lambda value, label: None),
+            )
+            self._apply_loaded_file_result(result)
+            if progress_dialog is not None:
                 self._update_progress(
-                    progress,
-                    progress.maximum(),
+                    progress_dialog,
+                    progress_dialog.maximum(),
                     "VTU file loaded.",
                 )
         finally:
-            if progress is not None:
-                progress.close()
+            if progress_dialog is not None:
+                progress_dialog.close()
 
     def load_obj_bundle(
         self,
@@ -841,35 +1196,30 @@ class MainWindow(QtWidgets.QMainWindow):
         show_progress: bool = True,
     ) -> None:
         """Load an OBJ/MTL/PNG bundle into the right viewport."""
-        progress = (
+        progress_dialog = (
             self._create_progress_dialog("Loading OBJ bundle...", 2)
             if show_progress
             else None
         )
         try:
-            if progress is not None:
-                self._update_progress(
-                    progress,
-                    0,
-                    "Resolving OBJ, MTL, and texture files...",
+            result = self._load_obj_bundle_task(
+                path,
+                progress=(
+                    lambda value, label: self._update_progress(
+                        progress_dialog,
+                        value,
+                        label,
+                    )
                 )
-            bundle = resolve_obj_bundle_paths(path)
-            if progress is not None:
-                self._update_progress(progress, 1, "Building textured OBJ preview...")
-            scene = build_obj_bundle_preview_scene(bundle)
-            self._current_bundle = bundle
-            self._current_bundle_scene = scene
-            self.obj_path_edit.setText(str(bundle.obj_path))
-            self.bundle_panel.set_scene(scene)
-            self._remember_directory("last_obj_bundle_directory", bundle.obj_path)
-            self.statusBar().showMessage(
-                f"Loaded OBJ bundle {bundle.obj_path.name}")
-            self._save_settings()
-            if progress is not None:
-                self._update_progress(progress, 2, "OBJ bundle loaded.")
+                if progress_dialog is not None
+                else (lambda value, label: None),
+            )
+            self._handle_loaded_obj_bundle_result(result)
+            if progress_dialog is not None:
+                self._update_progress(progress_dialog, 2, "OBJ bundle loaded.")
         finally:
-            if progress is not None:
-                progress.close()
+            if progress_dialog is not None:
+                progress_dialog.close()
 
     def _handle_field_changed(self) -> None:
         """Synchronize the range with the selected field and update the volume view."""
@@ -936,53 +1286,29 @@ class MainWindow(QtWidgets.QMainWindow):
         if not file_name:
             return
 
-        progress = self._create_progress_dialog("Exporting OBJ bundle...", 5)
+        progress_dialog = self._create_progress_dialog("Exporting OBJ bundle...", 5)
         try:
-            self._update_progress(progress, 0, "Generating scalar UV coordinates...")
             output_prefix = Path(file_name).with_suffix("")
             mapping_kwargs = self._current_mapping_kwargs()
-            textured_surface = apply_scalar_uv_map(
+            result = self._export_bundle_task(
                 self._current_surface,
                 self._current_field(),
+                output_prefix,
+                colormap=str(mapping_kwargs["colormap"]),
                 vmin=float(mapping_kwargs["vmin"]),
                 vmax=float(mapping_kwargs["vmax"]),
                 n_colors=int(mapping_kwargs["n_colors"]),
+                generate_normals=self.normals_checkbox.isChecked(),
+                progress=lambda value, label: self._update_progress(
+                    progress_dialog,
+                    value,
+                    label,
+                ),
             )
-            self._update_progress(progress, 1, "Building palette texture PNG...")
-            texture_image = build_palette_texture(
-                str(mapping_kwargs["colormap"]),
-                n_colors=int(mapping_kwargs["n_colors"]),
-            )
-            self._update_progress(progress, 2, "Preparing surface for OBJ export...")
-            if self.normals_checkbox.isChecked():
-                textured_surface = generate_surface_normals(textured_surface)
-            self._update_progress(progress, 3, "Writing OBJ, MTL, and PNG files...")
-            bundle = export_obj_bundle(
-                textured_surface, output_prefix, texture_image)
-            self._update_progress(progress, 4, "Reloading exported OBJ bundle...")
-            self.load_obj_bundle(bundle.obj_path, show_progress=False)
-            self._remember_directory("last_export_directory", bundle.obj_path)
-            self._update_progress(progress, 5, "Export complete.")
-        except (TypeError, ValueError, RuntimeError, FileNotFoundError) as exc:
-            self._show_error(str(exc))
-            return
+            self._handle_export_result(result)
+            self._update_progress(progress_dialog, 5, "Export complete.")
         finally:
-            progress.close()
-
-        self.statusBar().showMessage(
-            f"Exported bundle to {bundle.obj_path.parent}")
-        QtWidgets.QMessageBox.information(
-            self,
-            "Export complete",
-            "\n".join(
-                [
-                    f"OBJ: {bundle.obj_path}",
-                    f"MTL: {bundle.mtl_path}",
-                    f"PNG: {bundle.texture_path}",
-                ]
-            ),
-        )
-        self._save_settings()
+            progress_dialog.close()
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
         """Persist settings when the window closes."""
