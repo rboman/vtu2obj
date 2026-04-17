@@ -192,7 +192,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.export_bundle_action.setToolTip(
             "Export the current VTU conversion settings as an OBJ/MTL/PNG bundle."
         )
-        self.export_bundle_action.setStatusTip(self.export_bundle_action.toolTip())
+        self.export_bundle_action.setStatusTip(
+            self.export_bundle_action.toolTip())
         self.export_bundle_action.triggered.connect(self.export_current_bundle)
 
         self.reset_defaults_action = QtWidgets.QAction(
@@ -204,7 +205,8 @@ class MainWindow(QtWidgets.QMainWindow):
             "Forget persisted GUI preferences and restore the built-in default "
             "settings."
         )
-        self.reset_defaults_action.setStatusTip(self.reset_defaults_action.toolTip())
+        self.reset_defaults_action.setStatusTip(
+            self.reset_defaults_action.toolTip())
         self.reset_defaults_action.triggered.connect(self.reset_gui_defaults)
 
         self.about_action = QtWidgets.QAction(
@@ -289,7 +291,8 @@ class MainWindow(QtWidgets.QMainWindow):
             "Choose the scalar array used to color the volume view and to drive "
             "the exported texture coordinates."
         )
-        self.field_combo.currentIndexChanged.connect(self._handle_field_changed)
+        self.field_combo.currentIndexChanged.connect(
+            self._handle_field_changed)
         field_label = QtWidgets.QLabel("Field")
         field_label.setToolTip(self.field_combo.toolTip())
         layout.addWidget(field_label, 1, 0)
@@ -491,9 +494,11 @@ class MainWindow(QtWidgets.QMainWindow):
         if colormap_index >= 0:
             self.colormap_combo.setCurrentIndex(colormap_index)
 
-        self.n_colors_spin.setValue(int(self._settings.value("n_colors", DEFAULT_N_COLORS)))
+        self.n_colors_spin.setValue(
+            int(self._settings.value("n_colors", DEFAULT_N_COLORS)))
         self.normals_checkbox.setChecked(
-            self._setting_to_bool(self._settings.value("generate_normals"), True)
+            self._setting_to_bool(
+                self._settings.value("generate_normals"), True)
         )
 
         self._restore_viewport_settings(
@@ -510,7 +515,8 @@ class MainWindow(QtWidgets.QMainWindow):
         splitter_sizes = self._settings.value("splitter_sizes")
         if splitter_sizes:
             try:
-                self.main_splitter.setSizes([int(value) for value in splitter_sizes])
+                self.main_splitter.setSizes(
+                    [int(value) for value in splitter_sizes])
             except (TypeError, ValueError):
                 pass
         else:
@@ -529,7 +535,8 @@ class MainWindow(QtWidgets.QMainWindow):
     def _save_settings(self) -> None:
         """Persist the current lightweight GUI settings."""
         if self.current_file_path is not None:
-            self._settings.setValue("last_file_path", str(self.current_file_path))
+            self._settings.setValue(
+                "last_file_path", str(self.current_file_path))
             self._settings.setValue("last_field", self._current_field())
         if self._current_bundle is not None:
             self._settings.setValue(
@@ -539,7 +546,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._settings.setValue("colormap", self.colormap_combo.currentText())
         self._settings.setValue("n_colors", self.n_colors_spin.value())
-        self._settings.setValue("generate_normals", self.normals_checkbox.isChecked())
+        self._settings.setValue(
+            "generate_normals", self.normals_checkbox.isChecked())
         self._settings.setValue("splitter_sizes", self.main_splitter.sizes())
         self._save_viewport_settings("volume", self.volume_panel)
         self._save_viewport_settings("bundle", self.bundle_panel)
@@ -694,7 +702,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self._current_grid,
             self.current_file_path,
         )
-        self._current_surface = extract_surface(self._current_grid, triangulate=True)
+        self._current_surface = extract_surface(
+            self._current_grid, triangulate=True)
 
         scalar_names = scalar_field_names(self._current_summary)
         if not scalar_names:
@@ -727,7 +736,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._current_bundle_scene = scene
         self.obj_path_edit.setText(str(bundle.obj_path))
         self.bundle_panel.set_scene(scene)
-        self.statusBar().showMessage(f"Loaded OBJ bundle {bundle.obj_path.name}")
+        self.statusBar().showMessage(
+            f"Loaded OBJ bundle {bundle.obj_path.name}")
         self._save_settings()
 
     def _handle_field_changed(self) -> None:
@@ -798,13 +808,15 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             if self.normals_checkbox.isChecked():
                 textured_surface = generate_surface_normals(textured_surface)
-            bundle = export_obj_bundle(textured_surface, output_prefix, texture_image)
+            bundle = export_obj_bundle(
+                textured_surface, output_prefix, texture_image)
             self.load_obj_bundle(bundle.obj_path)
         except (TypeError, ValueError, RuntimeError, FileNotFoundError) as exc:
             self._show_error(str(exc))
             return
 
-        self.statusBar().showMessage(f"Exported bundle to {bundle.obj_path.parent}")
+        self.statusBar().showMessage(
+            f"Exported bundle to {bundle.obj_path.parent}")
         QtWidgets.QMessageBox.information(
             self,
             "Export complete",
