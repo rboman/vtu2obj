@@ -11,7 +11,7 @@ from .colormaps import build_lookup_table, require_colormap_name
 from .io_vtk import load_unstructured_grid
 from .surface import extract_surface
 from .texture import build_palette_texture
-from .uvmap import apply_scalar_uv_map, resolve_scalar_range
+from .uvmap import apply_scalar_uv_map, ensure_point_scalar_field, resolve_scalar_range
 
 
 @dataclass
@@ -30,18 +30,9 @@ class PreviewScene:
 def _require_scalar_point_array(
     surface: vtk.vtkPolyData,
     field_name: str,
-) -> vtk.vtkDataArray:
-    """Return a scalar point-data array or raise a clear validation error."""
-    scalar_array = surface.GetPointData().GetArray(field_name)
-    if scalar_array is None:
-        raise ValueError(
-            f"Unknown point-data field '{field_name}' on the surface mesh."
-        )
-    if scalar_array.GetNumberOfComponents() != 1:
-        raise ValueError(
-            f"Field '{field_name}' must be a scalar point-data array for preview."
-        )
-    return scalar_array
+) -> tuple[vtk.vtkPolyData, vtk.vtkDataArray]:
+    """Return a preview surface and scalar point-data array."""
+    return ensure_point_scalar_field(surface, field_name)
 
 
 def _build_base_renderer() -> vtk.vtkRenderer:
@@ -70,12 +61,12 @@ def build_scalar_preview_scene(
 ) -> PreviewScene:
     """Build a renderer that previews a scalar field with a lookup table."""
     require_colormap_name(colormap)
-    scalar_array = _require_scalar_point_array(surface, field_name)
+    preview_surface, scalar_array = _require_scalar_point_array(surface, field_name)
     scalar_range = resolve_scalar_range(scalar_array, vmin=vmin, vmax=vmax)
     lookup_table = build_lookup_table(colormap, n_colors=n_colors)
 
     mapper = vtk.vtkPolyDataMapper()
-    mapper.SetInputData(surface)
+    mapper.SetInputData(preview_surface)
     mapper.SetLookupTable(lookup_table)
     mapper.SetScalarModeToUsePointFieldData()
     mapper.SelectColorArray(field_name)
@@ -98,7 +89,7 @@ def build_scalar_preview_scene(
     return PreviewScene(
         renderer=renderer,
         actor=actor,
-        surface=surface,
+        surface=preview_surface,
         lookup_table=lookup_table,
         scalar_bar=scalar_bar,
     )
@@ -116,7 +107,6 @@ def build_textured_preview_scene(
 ) -> PreviewScene:
     """Build a renderer that previews the textured surface result."""
     require_colormap_name(colormap)
-    _require_scalar_point_array(surface, field_name)
 
     mapped_surface = apply_scalar_uv_map(
         surface,

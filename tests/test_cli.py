@@ -73,3 +73,27 @@ def test_convert_command_writes_obj_bundle(
     assert output_prefix.with_suffix(".obj").is_file()
     assert output_prefix.with_suffix(".mtl").is_file()
     assert output_prefix.with_suffix(".png").is_file()
+
+
+def test_convert_command_supports_scalar_cell_data(
+    sample_vtu_path: Path,
+    tmp_path: Path,
+) -> None:
+    output_prefix = tmp_path / "converted_cell" / "model"
+    result = runner.invoke(
+        app,
+        [
+            "convert",
+            str(sample_vtu_path),
+            str(output_prefix),
+            "--field",
+            "cell_stress_von_mises",
+            "--colormap",
+            "cool_to_warm",
+            "--n-colors",
+            "16",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert output_prefix.with_suffix(".obj").is_file()

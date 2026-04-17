@@ -32,5 +32,6 @@ def test_main_window_loads_scalar_fields(
     assert window.current_file_path == sample_vtu_path.resolve(strict=False)
     assert window.field_combo.count() >= 1
     assert window.field_combo.findText("stress_von_mises") != -1
+    assert window.field_combo.findText("cell_stress_von_mises") != -1
     assert window.colormap_combo.count() >= 4
     assert window.n_colors_spin.value() == 256

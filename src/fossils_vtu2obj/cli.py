@@ -167,7 +167,7 @@ def _print_summary(input_path: Path, include_counts_only: bool = False) -> None:
 
 
 def _validate_convert_field(input_path: Path, field_name: str) -> None:
-    """Validate that a field is available for point-data conversion."""
+    """Validate that a field is available for scalar conversion."""
     summary = inspect_dataset(input_path)
     point_array = find_array(summary, field_name, association="point")
     if point_array is not None:
@@ -180,10 +180,12 @@ def _validate_convert_field(input_path: Path, field_name: str) -> None:
 
     cell_array = find_array(summary, field_name, association="cell")
     if cell_array is not None:
-        raise ValueError(
-            f"Field '{field_name}' currently exists only as cell data. "
-            "Cell-data conversion is not implemented yet."
-        )
+        if not cell_array.is_scalar:
+            raise ValueError(
+                f"Field '{field_name}' exists on cells but is not scalar "
+                f"(components={cell_array.components})."
+            )
+        return
 
     require_array(summary, field_name, association="point")
 

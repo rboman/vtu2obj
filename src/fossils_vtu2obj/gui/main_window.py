@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PyQt5 import QtCore, QtWidgets
 
-from ..arrays import list_point_arrays
+from ..arrays import list_cell_arrays, list_point_arrays
 from ..colormaps import list_colormap_names
 from ..export_obj import export_obj_bundle
 from ..io_vtk import inspect_dataset, load_unstructured_grid
@@ -17,7 +17,7 @@ from ..preview import (
 )
 from ..surface import extract_surface
 from ..texture import build_palette_texture
-from ..uvmap import apply_scalar_uv_map
+from ..uvmap import apply_scalar_uv_map, ensure_point_scalar_field
 from .vtk_view import VtkView
 
 
@@ -145,11 +145,17 @@ class MainWindow(QtWidgets.QMainWindow):
         QtWidgets.QMessageBox.critical(self, "fossils-vtu2obj", message)
 
     def _scalar_field_names(self) -> list[str]:
-        """Return the scalar point-data field names available on the dataset."""
+        """Return the scalar field names available on the dataset."""
         if self.current_file_path is None:
             return []
         summary = inspect_dataset(self.current_file_path)
-        return [array.name for array in list_point_arrays(summary) if array.is_scalar]
+        scalar_fields = [
+            array.name for array in list_point_arrays(summary) if array.is_scalar
+        ]
+        scalar_fields.extend(
+            array.name for array in list_cell_arrays(summary) if array.is_scalar
+        )
+        return scalar_fields
 
     def _current_field(self) -> str:
         """Return the currently selected field name."""
@@ -173,11 +179,10 @@ class MainWindow(QtWidgets.QMainWindow):
         if self._current_surface is None:
             raise RuntimeError("No surface is loaded.")
 
-        array = self._current_surface.GetPointData().GetArray(self._current_field())
-        if array is None:
-            raise ValueError(
-                f"Unknown point-data field '{self._current_field()}' on the surface."
-            )
+        _, array = ensure_point_scalar_field(
+            self._current_surface,
+            self._current_field(),
+        )
         return tuple(float(value) for value in array.GetRange())
 
     def _build_current_scene(self) -> PreviewScene:

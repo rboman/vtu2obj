@@ -87,6 +87,46 @@ def scalar_to_uv(
     return bin_center(bin_index, n_colors), v_coord
 
 
+def ensure_point_scalar_field(
+    polydata: vtk.vtkPolyData,
+    field_name: str,
+) -> tuple[vtk.vtkPolyData, vtk.vtkDataArray]:
+    """Return a surface carrying the requested scalar field as point data."""
+    if not isinstance(polydata, vtk.vtkPolyData):
+        raise TypeError("ensure_point_scalar_field expects a vtkPolyData input.")
+
+    point_array = polydata.GetPointData().GetArray(field_name)
+    if point_array is not None:
+        if point_array.GetNumberOfComponents() != 1:
+            raise ValueError(
+                f"Field '{field_name}' exists on points but is not scalar."
+            )
+        return polydata, point_array
+
+    cell_array = polydata.GetCellData().GetArray(field_name)
+    if cell_array is not None:
+        if cell_array.GetNumberOfComponents() != 1:
+            raise ValueError(
+                f"Field '{field_name}' exists on cells but is not scalar."
+            )
+
+        converter = vtk.vtkCellDataToPointData()
+        converter.SetInputData(polydata)
+        converter.PassCellDataOn()
+        converter.Update()
+
+        converted_surface = vtk.vtkPolyData()
+        converted_surface.DeepCopy(converter.GetOutput())
+        converted_array = converted_surface.GetPointData().GetArray(field_name)
+        if converted_array is None:
+            raise RuntimeError(
+                f"Failed to convert cell-data field '{field_name}' to point data."
+            )
+        return converted_surface, converted_array
+
+    raise ValueError(f"Unknown scalar field '{field_name}' on the surface mesh.")
+
+
 def apply_scalar_uv_map(
     polydata: vtk.vtkPolyData,
     field_name: str,
@@ -97,19 +137,7 @@ def apply_scalar_uv_map(
     v_coord: float = DEFAULT_V_COORD,
 ) -> vtk.vtkPolyData:
     """Attach texture coordinates derived from scalar values."""
-    if not isinstance(polydata, vtk.vtkPolyData):
-        raise TypeError("apply_scalar_uv_map expects a vtkPolyData input.")
-
-    scalar_array = polydata.GetPointData().GetArray(field_name)
-    if scalar_array is None:
-        raise ValueError(
-            f"Unknown point-data field '{field_name}' on the surface mesh."
-        )
-    if scalar_array.GetNumberOfComponents() != 1:
-        raise ValueError(
-            f"Field '{field_name}' must be a scalar point-data array to generate UVs."
-        )
-
+    source_surface, scalar_array = ensure_point_scalar_field(polydata, field_name)
     validate_color_bins(n_colors)
     resolved_vmin, resolved_vmax = resolve_scalar_range(
         scalar_array,
@@ -118,7 +146,7 @@ def apply_scalar_uv_map(
     )
 
     mapped_surface = vtk.vtkPolyData()
-    mapped_surface.DeepCopy(polydata)
+    mapped_surface.DeepCopy(source_surface)
     mapped_array = mapped_surface.GetPointData().GetArray(field_name)
 
     texture_coordinates = vtk.vtkFloatArray()
