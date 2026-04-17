@@ -16,6 +16,7 @@ def launch_gui(initial_path: str | Path | None = None) -> None:
     import vtk
     from PyQt5 import QtWidgets
 
+    from .icons import create_app_icon
     from .main_window import MainWindow
 
     output_window = vtk.vtkOutputWindow()
@@ -27,6 +28,7 @@ def launch_gui(initial_path: str | Path | None = None) -> None:
     owns_application = application is None
     if application is None:
         application = QtWidgets.QApplication([])
+    application.setWindowIcon(create_app_icon())
 
     window = MainWindow(initial_path=initial_path)
     window.show()

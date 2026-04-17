@@ -54,6 +54,9 @@ class MeshViewportPanel(QtWidgets.QWidget):
         title_font = self.title_label.font()
         title_font.setBold(True)
         self.title_label.setFont(title_font)
+        self.title_label.setToolTip(
+            f"This panel displays the {title.lower()} and its dedicated controls."
+        )
         layout.addWidget(self.title_label)
 
         if enable_vtk_view:
@@ -65,23 +68,46 @@ class MeshViewportPanel(QtWidgets.QWidget):
             )
             self.placeholder_label.setAlignment(QtCore.Qt.AlignCenter)
             self.placeholder_label.setMinimumHeight(240)
+            self.placeholder_label.setToolTip(
+                "The embedded VTK viewport is disabled in this session, usually for a "
+                "headless automated test."
+            )
             layout.addWidget(self.placeholder_label, stretch=1)
 
         self.tabs = QtWidgets.QTabWidget(self)
+        self.tabs.setToolTip(
+            "Use these tabs to configure the viewport overlays or inspect the mesh "
+            "information shown in this panel."
+        )
         layout.addWidget(self.tabs)
 
         display_tab = QtWidgets.QWidget(self.tabs)
         display_layout = QtWidgets.QVBoxLayout(display_tab)
         self.show_edges_checkbox = QtWidgets.QCheckBox("Show mesh edges")
+        self.show_edges_checkbox.setToolTip(
+            "Overlay the extracted mesh edges on top of the rendered geometry for "
+            "this viewport only."
+        )
         self.show_axes_checkbox = QtWidgets.QCheckBox("Show XYZ trihedron")
+        self.show_axes_checkbox.setToolTip(
+            "Display the orientation trihedron in the lower-left corner of this "
+            "viewport."
+        )
         self.edge_color_button = QtWidgets.QPushButton()
         self.edge_color_button.clicked.connect(self.choose_edge_color)
+        self.edge_color_button.setToolTip(
+            "Choose the color used to draw the mesh-edge overlay in this viewport."
+        )
         self.show_edges_checkbox.toggled.connect(self._apply_display_options)
         self.show_axes_checkbox.toggled.connect(self._apply_display_options)
 
         display_layout.addWidget(self.show_edges_checkbox)
         display_layout.addWidget(self.show_axes_checkbox)
-        display_layout.addWidget(QtWidgets.QLabel("Edge color"))
+        edge_color_label = QtWidgets.QLabel("Edge color")
+        edge_color_label.setToolTip(
+            "The edge color applies only to the edge overlay of this viewport."
+        )
+        display_layout.addWidget(edge_color_label)
         display_layout.addWidget(self.edge_color_button)
         display_layout.addStretch(1)
         self.tabs.addTab(display_tab, "Display")
@@ -90,6 +116,10 @@ class MeshViewportPanel(QtWidgets.QWidget):
         info_layout = QtWidgets.QVBoxLayout(info_tab)
         self.info_text_edit = QtWidgets.QPlainTextEdit(info_tab)
         self.info_text_edit.setReadOnly(True)
+        self.info_text_edit.setToolTip(
+            "Read-only technical summary of the mesh displayed in this viewport: "
+            "topology, arrays, UVs, normals, and texture state."
+        )
         info_layout.addWidget(self.info_text_edit)
         self.tabs.addTab(info_tab, "Info")
 

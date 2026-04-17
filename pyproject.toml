@@ -45,7 +45,7 @@ package-dir = { "" = "src" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-fossils_vtu2obj = ["py.typed"]
+fossils_vtu2obj = ["py.typed", "gui/assets/*.svg"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

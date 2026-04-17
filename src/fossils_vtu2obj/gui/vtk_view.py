@@ -33,13 +33,8 @@ class VtkView(QVTKRenderWindowInteractor):
             self._interactor.SetInteractorStyle(vtk.vtkInteractorStyleTrackballCamera())
 
         self._axes_actor = vtk.vtkAxesActor()
-        self._axes_widget = vtk.vtkOrientationMarkerWidget()
-        self._axes_widget.SetOrientationMarker(self._axes_actor)
-        if self._interactor is not None:
-            self._axes_widget.SetInteractor(self._interactor)
-        self._axes_widget.SetViewport(0.0, 0.0, 0.20, 0.20)
-        self._axes_widget.KeyPressActivationOff()
-        self._sync_axes_widget()
+        self._axes_widget: vtk.vtkOrientationMarkerWidget | None = None
+        self._rebuild_axes_widget()
 
     @property
     def scene(self) -> PreviewScene | None:
@@ -67,10 +62,7 @@ class VtkView(QVTKRenderWindowInteractor):
         if self._interactor is not None:
             self._interactor.SetInteractorStyle(vtk.vtkInteractorStyleTrackballCamera())
 
-        if hasattr(self._axes_widget, "SetDefaultRenderer"):
-            self._axes_widget.SetDefaultRenderer(self._renderer)
-        if hasattr(self._axes_widget, "SetCurrentRenderer"):
-            self._axes_widget.SetCurrentRenderer(self._renderer)
+        self._rebuild_axes_widget()
 
         self._apply_display_options()
         QtCore.QTimer.singleShot(0, self._apply_display_options)
@@ -83,19 +75,18 @@ class VtkView(QVTKRenderWindowInteractor):
         render_window.AddRenderer(self._renderer)
         self._scene = None
 
-        if hasattr(self._axes_widget, "SetDefaultRenderer"):
-            self._axes_widget.SetDefaultRenderer(self._renderer)
-        if hasattr(self._axes_widget, "SetCurrentRenderer"):
-            self._axes_widget.SetCurrentRenderer(self._renderer)
+        self._rebuild_axes_widget()
 
         self._apply_display_options()
 
     def shutdown(self) -> None:
         """Release the VTK resources held by the embedded Qt widget."""
         try:
-            self._axes_widget.SetEnabled(0)
+            if self._axes_widget is not None:
+                self._axes_widget.SetEnabled(0)
         except RuntimeError:
             pass
+        self._axes_widget = None
 
         render_window = self.GetRenderWindow()
         if render_window is not None:
@@ -126,14 +117,8 @@ class VtkView(QVTKRenderWindowInteractor):
 
     def _sync_axes_widget(self) -> None:
         """Synchronize the orientation marker widget with the current state."""
-        if self._interactor is None:
+        if self._interactor is None or self._axes_widget is None:
             return
-
-        self._axes_widget.SetInteractor(self._interactor)
-        if hasattr(self._axes_widget, "SetDefaultRenderer"):
-            self._axes_widget.SetDefaultRenderer(self._renderer)
-        if hasattr(self._axes_widget, "SetCurrentRenderer"):
-            self._axes_widget.SetCurrentRenderer(self._renderer)
 
         if self._display_options.show_axes:
             self._axes_widget.EnabledOn()
@@ -141,6 +126,27 @@ class VtkView(QVTKRenderWindowInteractor):
             self._axes_widget.KeyPressActivationOff()
         else:
             self._axes_widget.EnabledOff()
+
+    def _rebuild_axes_widget(self) -> None:
+        """Create a fresh orientation-marker widget bound to the current renderer."""
+        if self._interactor is None:
+            return
+
+        if self._axes_widget is not None:
+            try:
+                self._axes_widget.SetEnabled(0)
+            except RuntimeError:
+                pass
+
+        self._axes_widget = vtk.vtkOrientationMarkerWidget()
+        self._axes_widget.SetOrientationMarker(self._axes_actor)
+        self._axes_widget.SetInteractor(self._interactor)
+        self._axes_widget.SetViewport(0.0, 0.0, 0.20, 0.20)
+        self._axes_widget.KeyPressActivationOff()
+        if hasattr(self._axes_widget, "SetDefaultRenderer"):
+            self._axes_widget.SetDefaultRenderer(self._renderer)
+        if hasattr(self._axes_widget, "SetCurrentRenderer"):
+            self._axes_widget.SetCurrentRenderer(self._renderer)
 
     def _apply_display_options(self) -> None:
         """Apply edge and axis settings to the current scene."""

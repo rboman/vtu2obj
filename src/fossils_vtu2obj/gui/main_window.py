@@ -19,6 +19,7 @@ from ..preview import (
 from ..surface import extract_surface, generate_surface_normals
 from ..texture import build_palette_texture
 from ..uvmap import apply_scalar_uv_map
+from .icons import create_app_icon, standard_icon
 from .viewport_panel import MeshViewportPanel
 
 
@@ -27,6 +28,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     ORGANIZATION_NAME = "fossils"
     APPLICATION_NAME = "fossils-vtu2obj"
+    GITHUB_URL = "https://github.com/rboman/vtu2obj"
     VOLUME_DEFAULTS = ViewDisplayOptions(
         show_edges=False,
         edge_color=(0.78, 0.80, 0.84),
@@ -47,6 +49,7 @@ class MainWindow(QtWidgets.QMainWindow):
     ) -> None:
         super().__init__()
         self.setWindowTitle("fossils-vtu2obj")
+        self.setWindowIcon(create_app_icon())
         self.resize(1600, 900)
 
         self.current_file_path: Path | None = None
@@ -88,6 +91,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _build_ui(self) -> None:
         """Create the window layout and interactive controls."""
+        self._build_menus()
         central_widget = QtWidgets.QWidget(self)
         self.setCentralWidget(central_widget)
 
@@ -96,45 +100,98 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addLayout(controls_layout)
 
         self.open_button = QtWidgets.QPushButton("Open VTU...")
+        self.open_button.setIcon(
+            standard_icon(self, QtWidgets.QStyle.SP_DialogOpenButton)
+        )
+        self.open_button.setToolTip(
+            "Open a VTU results file and populate the field, range, and preview "
+            "controls from that dataset."
+        )
         self.open_button.clicked.connect(self.open_file_dialog)
         controls_layout.addWidget(self.open_button, 0, 0)
 
         self.path_edit = QtWidgets.QLineEdit()
         self.path_edit.setReadOnly(True)
+        self.path_edit.setToolTip(
+            "Absolute path of the VTU file currently loaded in the application."
+        )
         controls_layout.addWidget(self.path_edit, 0, 1, 1, 4)
 
         self.open_obj_button = QtWidgets.QPushButton("Open OBJ Bundle...")
+        self.open_obj_button.setIcon(
+            standard_icon(self, QtWidgets.QStyle.SP_DirOpenIcon)
+        )
+        self.open_obj_button.setToolTip(
+            "Open an existing OBJ/MTL/PNG bundle on disk and display it in the "
+            "right-hand viewport."
+        )
         self.open_obj_button.clicked.connect(self.open_obj_bundle_dialog)
         controls_layout.addWidget(self.open_obj_button, 0, 5)
 
         self.export_button = QtWidgets.QPushButton("Export OBJ/MTL/PNG...")
+        self.export_button.setIcon(
+            standard_icon(self, QtWidgets.QStyle.SP_DialogSaveButton)
+        )
+        self.export_button.setToolTip(
+            "Export the currently selected field as a surface OBJ with UVs, a PNG "
+            "palette texture, and a matching MTL file."
+        )
         self.export_button.clicked.connect(self.export_current_bundle)
         controls_layout.addWidget(self.export_button, 0, 6)
 
         self.reset_defaults_button = QtWidgets.QPushButton("Reset GUI Defaults")
+        self.reset_defaults_button.setIcon(
+            standard_icon(self, QtWidgets.QStyle.SP_BrowserReload)
+        )
+        self.reset_defaults_button.setToolTip(
+            "Forget persisted GUI preferences and restore the built-in default "
+            "settings for colors, view overlays, and layout."
+        )
         self.reset_defaults_button.clicked.connect(self.reset_gui_defaults)
         controls_layout.addWidget(self.reset_defaults_button, 0, 7)
 
         self.field_combo = QtWidgets.QComboBox()
+        self.field_combo.setToolTip(
+            "Choose the scalar array used to color the volume view and to drive "
+            "the exported texture coordinates."
+        )
         self.field_combo.currentIndexChanged.connect(self._handle_field_changed)
-        controls_layout.addWidget(QtWidgets.QLabel("Field"), 1, 0)
+        field_label = QtWidgets.QLabel("Field")
+        field_label.setToolTip(self.field_combo.toolTip())
+        controls_layout.addWidget(field_label, 1, 0)
         controls_layout.addWidget(self.field_combo, 1, 1)
 
         self.colormap_combo = QtWidgets.QComboBox()
         for name in list_colormap_names():
             self.colormap_combo.addItem(name)
+        self.colormap_combo.setToolTip(
+            "Choose the discrete colormap used for scalar coloring and palette "
+            "texture generation."
+        )
         self.colormap_combo.currentIndexChanged.connect(self.refresh_preview)
-        controls_layout.addWidget(QtWidgets.QLabel("Colormap"), 1, 2)
+        colormap_label = QtWidgets.QLabel("Colormap")
+        colormap_label.setToolTip(self.colormap_combo.toolTip())
+        controls_layout.addWidget(colormap_label, 1, 2)
         controls_layout.addWidget(self.colormap_combo, 1, 3)
 
         self.n_colors_spin = QtWidgets.QSpinBox()
         self.n_colors_spin.setRange(2, 4096)
         self.n_colors_spin.setValue(256)
-        controls_layout.addWidget(QtWidgets.QLabel("Color bins"), 1, 4)
+        self.n_colors_spin.setToolTip(
+            "Number of discrete palette bins used for the colormap, the UV "
+            "quantization, and the exported PNG texture."
+        )
+        n_colors_label = QtWidgets.QLabel("Color bins")
+        n_colors_label.setToolTip(self.n_colors_spin.toolTip())
+        controls_layout.addWidget(n_colors_label, 1, 4)
         controls_layout.addWidget(self.n_colors_spin, 1, 5)
 
         self.normals_checkbox = QtWidgets.QCheckBox("Generate normals")
         self.normals_checkbox.setChecked(True)
+        self.normals_checkbox.setToolTip(
+            "Generate and export point normals on the surface mesh so downstream "
+            "tools can shade the OBJ more smoothly."
+        )
         controls_layout.addWidget(self.normals_checkbox, 1, 6)
 
         self.vmin_spin = QtWidgets.QDoubleSpinBox()
@@ -143,20 +200,50 @@ class MainWindow(QtWidgets.QMainWindow):
             spin_box.setDecimals(6)
             spin_box.setRange(-1.0e30, 1.0e30)
             spin_box.setSingleStep(0.1)
-        controls_layout.addWidget(QtWidgets.QLabel("vmin"), 2, 0)
+        self.vmin_spin.setToolTip(
+            "Lower bound of the scalar range mapped to the colormap and texture. "
+            "Values below this limit are clamped."
+        )
+        self.vmax_spin.setToolTip(
+            "Upper bound of the scalar range mapped to the colormap and texture. "
+            "Values above this limit are clamped."
+        )
+        vmin_label = QtWidgets.QLabel("vmin")
+        vmin_label.setToolTip(self.vmin_spin.toolTip())
+        controls_layout.addWidget(vmin_label, 2, 0)
         controls_layout.addWidget(self.vmin_spin, 2, 1)
-        controls_layout.addWidget(QtWidgets.QLabel("vmax"), 2, 2)
+        vmax_label = QtWidgets.QLabel("vmax")
+        vmax_label.setToolTip(self.vmax_spin.toolTip())
+        controls_layout.addWidget(vmax_label, 2, 2)
         controls_layout.addWidget(self.vmax_spin, 2, 3)
 
         self.reset_range_button = QtWidgets.QPushButton("Use Data Range")
+        self.reset_range_button.setIcon(
+            standard_icon(self, QtWidgets.QStyle.SP_ArrowBack)
+        )
+        self.reset_range_button.setToolTip(
+            "Reset vmin and vmax to the actual data range of the currently "
+            "selected scalar field."
+        )
         self.reset_range_button.clicked.connect(self.reset_current_range)
         controls_layout.addWidget(self.reset_range_button, 2, 4)
 
         self.refresh_button = QtWidgets.QPushButton("Refresh Volume View")
+        self.refresh_button.setIcon(
+            standard_icon(self, QtWidgets.QStyle.SP_BrowserReload)
+        )
+        self.refresh_button.setToolTip(
+            "Rebuild the left-hand volume preview using the current field, range, "
+            "and colormap settings."
+        )
         self.refresh_button.clicked.connect(self.refresh_preview)
         controls_layout.addWidget(self.refresh_button, 2, 5, 1, 2)
 
         self.splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal, self)
+        self.splitter.setToolTip(
+            "Resize the two viewports to compare the original VTU volume on the "
+            "left with the exported OBJ bundle on the right."
+        )
         self.volume_panel = MeshViewportPanel(
             "Volume Mesh",
             default_display_options=self.VOLUME_DEFAULTS,
@@ -176,6 +263,49 @@ class MainWindow(QtWidgets.QMainWindow):
         layout.addWidget(self.splitter, stretch=1)
 
         self.statusBar().showMessage("Open a VTU file or an OBJ bundle to begin.")
+
+    def _build_menus(self) -> None:
+        """Create the application menus."""
+        menu_bar = self.menuBar()
+
+        help_menu = menu_bar.addMenu("&Help")
+        credits_menu = menu_bar.addMenu("&Credits")
+
+        self.about_action = QtWidgets.QAction(
+            standard_icon(self, QtWidgets.QStyle.SP_MessageBoxInformation),
+            "About fossils-vtu2obj",
+            self,
+        )
+        self.about_action.setToolTip(
+            "Show a short description of the application and its main workflow."
+        )
+        self.about_action.setStatusTip(self.about_action.toolTip())
+        self.about_action.triggered.connect(self.show_about_dialog)
+        help_menu.addAction(self.about_action)
+
+        self.github_action = QtWidgets.QAction(
+            standard_icon(self, QtWidgets.QStyle.SP_DirLinkIcon),
+            "Open GitHub Repository",
+            self,
+        )
+        self.github_action.setToolTip(
+            "Open the GitHub repository of this project in your default web browser."
+        )
+        self.github_action.setStatusTip(self.github_action.toolTip())
+        self.github_action.triggered.connect(self.open_github_repository)
+        help_menu.addAction(self.github_action)
+
+        self.credits_action = QtWidgets.QAction(
+            standard_icon(self, QtWidgets.QStyle.SP_FileDialogInfoView),
+            "Show Credits",
+            self,
+        )
+        self.credits_action.setToolTip(
+            "Display the project credits for Romain Boman and OpenAI Codex."
+        )
+        self.credits_action.setStatusTip(self.credits_action.toolTip())
+        self.credits_action.triggered.connect(self.show_credits_dialog)
+        credits_menu.addAction(self.credits_action)
 
     def _set_controls_enabled(self, enabled: bool) -> None:
         """Enable or disable controls that depend on a loaded VTU dataset."""
@@ -330,6 +460,41 @@ class MainWindow(QtWidgets.QMainWindow):
         """Display an error dialog and mirror the message in the status bar."""
         self.statusBar().showMessage(message)
         QtWidgets.QMessageBox.critical(self, "fossils-vtu2obj", message)
+
+    def show_about_dialog(self) -> None:
+        """Show a compact description of the application."""
+        QtWidgets.QMessageBox.about(
+            self,
+            "About fossils-vtu2obj",
+            "\n".join(
+                [
+                    "fossils-vtu2obj converts VTU FEM results into a surface OBJ,",
+                    "a PNG palette texture, and a matching MTL file.",
+                    "",
+                    "The GUI lets you inspect the original VTU volume on the left",
+                    "and compare it with an exported OBJ/MTL/PNG bundle on the right.",
+                    "",
+                    f"GitHub: {self.GITHUB_URL}",
+                ]
+            ),
+        )
+
+    def show_credits_dialog(self) -> None:
+        """Show the project credits."""
+        QtWidgets.QMessageBox.information(
+            self,
+            "Credits",
+            "\n".join(
+                [
+                    "Project author: Romain Boman",
+                    "Development assistance: OpenAI Codex",
+                ]
+            ),
+        )
+
+    def open_github_repository(self) -> None:
+        """Open the GitHub repository in the default browser."""
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl(self.GITHUB_URL))
 
     def _scalar_field_names(self) -> list[str]:
         """Return the scalar field names available on the current dataset."""

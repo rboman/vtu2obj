@@ -48,6 +48,12 @@ def test_main_window_loads_scalar_fields(
     assert window.volume_panel.show_axes_checkbox.isChecked() is True
     assert window.bundle_panel.show_edges_checkbox.isChecked() is False
     assert window.bundle_panel.show_axes_checkbox.isChecked() is True
+    assert window.open_button.toolTip()
+    assert window.export_button.toolTip()
+    assert window.field_combo.toolTip()
+    assert window.open_button.icon().isNull() is False
+    assert window.export_button.icon().isNull() is False
+    assert window.windowIcon().isNull() is False
 
 
 def test_main_window_restores_persisted_settings(
@@ -175,3 +181,22 @@ def test_reset_gui_defaults_clears_persisted_settings(
     assert window.bundle_panel.show_edges_checkbox.isChecked() is False
     assert window.bundle_panel.show_axes_checkbox.isChecked() is True
     assert settings.value("colormap") == "rainbow"
+
+
+def test_main_window_exposes_help_and_credits_actions(
+    qapplication: QtWidgets.QApplication,
+    tmp_path: Path,
+) -> None:
+    _ = qapplication
+    settings = QtCore.QSettings(
+        str(tmp_path / "gui_settings.ini"),
+        QtCore.QSettings.IniFormat,
+    )
+    window = MainWindow(enable_vtk_view=False, settings=settings)
+
+    assert window.about_action.text() == "About fossils-vtu2obj"
+    assert window.github_action.text() == "Open GitHub Repository"
+    assert window.credits_action.text() == "Show Credits"
+    assert window.about_action.toolTip()
+    assert window.github_action.toolTip()
+    assert window.credits_action.toolTip()
