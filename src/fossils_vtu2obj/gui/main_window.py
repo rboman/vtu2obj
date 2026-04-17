@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
@@ -113,11 +114,181 @@ class _BackgroundTaskWorker(QtCore.QObject):
         self.progress.emit(value, label_text)
 
 
+class _OperationCancelled(Exception):
+    """Raised when the user cancels one long-running GUI operation."""
+
+
+def _format_file_size(num_bytes: int) -> str:
+    """Render one byte count with a compact human-readable unit."""
+    value = float(num_bytes)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if value < 1024.0 or unit == "TB":
+            if unit == "B":
+                return f"{int(value)} {unit}"
+            return f"{value:.1f} {unit}"
+        value /= 1024.0
+    return f"{num_bytes} B"
+
+
+class _OperationProgressDialog(QtWidgets.QDialog):
+    """Large progress dialog used for long synchronous GUI operations."""
+
+    def __init__(
+        self,
+        parent: QtWidgets.QWidget,
+        *,
+        title: str,
+        label_text: str,
+        maximum: int,
+        subject_path: str | Path | None = None,
+        can_cancel: bool = True,
+    ) -> None:
+        super().__init__(parent)
+        self._cancel_requested = False
+        self._elapsed = QtCore.QElapsedTimer()
+        self._elapsed.start()
+        self._elapsed_timer = QtCore.QTimer(self)
+        self._elapsed_timer.setInterval(200)
+        self._elapsed_timer.timeout.connect(self._refresh_elapsed_label)
+
+        self.setWindowTitle(title)
+        self.setWindowModality(QtCore.Qt.WindowModal)
+        self.setModal(True)
+        self.resize(700, 250)
+        self.setMinimumSize(700, 250)
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(10)
+
+        self.message_label = QtWidgets.QLabel(label_text, self)
+        self.message_label.setWordWrap(True)
+        message_font = self.message_label.font()
+        message_font.setBold(True)
+        self.message_label.setFont(message_font)
+        layout.addWidget(self.message_label)
+
+        details_box = QtWidgets.QGroupBox("Operation Details", self)
+        details_layout = QtWidgets.QGridLayout(details_box)
+        details_layout.setContentsMargins(10, 10, 10, 10)
+        details_layout.setHorizontalSpacing(12)
+        details_layout.setVerticalSpacing(6)
+
+        self.file_name_value = QtWidgets.QLabel("-", details_box)
+        self.file_path_value = QtWidgets.QLabel("-", details_box)
+        self.file_path_value.setWordWrap(True)
+        self.file_size_value = QtWidgets.QLabel("-", details_box)
+        self.file_modified_value = QtWidgets.QLabel("-", details_box)
+        self.elapsed_value = QtWidgets.QLabel("0.0 s", details_box)
+
+        for row, (label, value_widget) in enumerate(
+            (
+                ("File", self.file_name_value),
+                ("Path", self.file_path_value),
+                ("Size", self.file_size_value),
+                ("Modified", self.file_modified_value),
+                ("Elapsed", self.elapsed_value),
+            )
+        ):
+            details_layout.addWidget(QtWidgets.QLabel(label, details_box), row, 0)
+            details_layout.addWidget(value_widget, row, 1)
+        layout.addWidget(details_box)
+
+        self.progress_bar = QtWidgets.QProgressBar(self)
+        self.progress_bar.setRange(0, maximum)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(True)
+        layout.addWidget(self.progress_bar)
+
+        self.activity_bar = QtWidgets.QProgressBar(self)
+        self.activity_bar.setRange(0, 0)
+        self.activity_bar.setTextVisible(False)
+        layout.addWidget(self.activity_bar)
+
+        self.hint_label = QtWidgets.QLabel(
+            "Large VTK operations may block repainting for several seconds on very "
+            "large meshes. The operation is still running even if the main progress "
+            "bar appears paused.",
+            self,
+        )
+        self.hint_label.setWordWrap(True)
+        layout.addWidget(self.hint_label)
+
+        button_layout = QtWidgets.QHBoxLayout()
+        button_layout.addStretch(1)
+        self.cancel_button = QtWidgets.QPushButton("Cancel", self)
+        self.cancel_button.setEnabled(can_cancel)
+        self.cancel_button.clicked.connect(self._request_cancel)
+        button_layout.addWidget(self.cancel_button)
+        layout.addLayout(button_layout)
+
+        self._set_subject_path(subject_path)
+        self._elapsed_timer.start()
+
+    def set_message(self, text: str) -> None:
+        """Update the main operation message."""
+        self.message_label.setText(text)
+
+    def set_progress(self, value: int) -> None:
+        """Update the determinate progress bar."""
+        self.progress_bar.setValue(value)
+
+    def maximum(self) -> int:
+        """Return the maximum value of the determinate progress bar."""
+        return self.progress_bar.maximum()
+
+    def cancel_requested(self) -> bool:
+        """Return whether the user asked to cancel this operation."""
+        return self._cancel_requested
+
+    def closeEvent(self, event: QtGui.QCloseEvent) -> None:
+        """Stop the local timer when the dialog closes."""
+        self._elapsed_timer.stop()
+        super().closeEvent(event)
+
+    def _request_cancel(self) -> None:
+        """Record a cancellation request from the user."""
+        self._cancel_requested = True
+        self.cancel_button.setEnabled(False)
+        self.cancel_button.setText("Cancelling...")
+        self.hint_label.setText(
+            "Cancellation will happen at the next safe stage boundary. "
+            "An active VTK call cannot be interrupted immediately."
+        )
+
+    def _set_subject_path(self, subject_path: str | Path | None) -> None:
+        """Display file metadata for the current long-running operation."""
+        if subject_path is None:
+            return
+
+        path = Path(subject_path).expanduser().resolve(strict=False)
+        self.file_name_value.setText(path.name)
+        self.file_path_value.setText(str(path))
+        if path.exists():
+            try:
+                self.file_size_value.setText(_format_file_size(path.stat().st_size))
+                modified = datetime.fromtimestamp(path.stat().st_mtime)
+                self.file_modified_value.setText(
+                    modified.strftime("%Y-%m-%d %H:%M:%S")
+                )
+            except OSError:
+                self.file_size_value.setText("Unavailable")
+                self.file_modified_value.setText("Unavailable")
+        else:
+            self.file_size_value.setText("File does not exist yet")
+            self.file_modified_value.setText("-")
+
+    def _refresh_elapsed_label(self) -> None:
+        """Update the elapsed-time label while the dialog is visible."""
+        self.elapsed_value.setText(f"{self._elapsed.elapsed() / 1000.0:.1f} s")
+
+
 class MainWindow(QtWidgets.QMainWindow):
     """GUI for inspecting VTU files and comparing them with exported OBJ bundles."""
 
     ORGANIZATION_NAME = "fossils"
     APPLICATION_NAME = "fossils-vtu2obj"
+    MAX_RECENT_FILES = 10
     GITHUB_URL = DEFAULT_GITHUB_URL
     VOLUME_DEFAULTS = ViewDisplayOptions(
         show_edges=DEFAULT_VOLUME_SHOW_EDGES,
@@ -335,10 +506,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.file_menu = menu_bar.addMenu("&File")
         self.file_menu.addAction(self.open_vtu_action)
+        self.recent_vtu_menu = self.file_menu.addMenu("Recent &VTU Files")
         self.file_menu.addAction(self.open_obj_action)
+        self.recent_obj_menu = self.file_menu.addMenu("Recent &OBJ Bundles")
         self.file_menu.addSeparator()
         self.file_menu.addAction(self.export_bundle_action)
         self.file_menu.addAction(self.clear_views_action)
+        self._refresh_recent_file_menus()
 
         self.settings_menu = menu_bar.addMenu("&Settings")
         self.settings_menu.addAction(self.reset_defaults_action)
@@ -721,6 +895,111 @@ class MainWindow(QtWidgets.QMainWindow):
         directory = selected_path.parent if selected_path.suffix else selected_path
         self._settings.setValue(key, str(directory.resolve(strict=False)))
 
+    def _recent_files(self, key: str) -> list[str]:
+        """Return the persisted recent-file list for one category."""
+        raw_value = self._settings.value(key, [])
+        if isinstance(raw_value, str):
+            values = [raw_value]
+        elif raw_value is None:
+            values = []
+        else:
+            values = list(raw_value)
+
+        recent_files: list[str] = []
+        for value in values:
+            normalized = str(value).strip()
+            if normalized and normalized not in recent_files:
+                recent_files.append(normalized)
+        return recent_files
+
+    def _set_recent_files(self, key: str, paths: list[str]) -> None:
+        """Persist one cleaned recent-file list."""
+        self._settings.setValue(key, paths[: self.MAX_RECENT_FILES])
+
+    def _add_recent_file(self, key: str, path: str | Path) -> None:
+        """Push one existing file path to the top of a recent-file list."""
+        normalized_path = str(Path(path).expanduser().resolve(strict=False))
+        recent_files = [
+            item for item in self._recent_files(key) if item != normalized_path
+        ]
+        recent_files.insert(0, normalized_path)
+        self._set_recent_files(key, recent_files)
+        self._refresh_recent_file_menus()
+
+    def _remove_recent_file(self, key: str, path: str | Path) -> None:
+        """Remove one path from a recent-file list."""
+        normalized_path = str(Path(path).expanduser().resolve(strict=False))
+        recent_files = [
+            item for item in self._recent_files(key) if item != normalized_path
+        ]
+        self._set_recent_files(key, recent_files)
+        self._refresh_recent_file_menus()
+
+    def _populate_recent_menu(
+        self,
+        menu: QtWidgets.QMenu,
+        key: str,
+        callback: Callable[[str], None],
+    ) -> None:
+        """Populate one recent-files menu from persisted settings."""
+        menu.clear()
+        recent_files = self._recent_files(key)
+        existing_files: list[str] = []
+        for item in recent_files:
+            path = Path(item).expanduser().resolve(strict=False)
+            if path.is_file():
+                existing_files.append(str(path))
+
+        if existing_files != recent_files:
+            self._set_recent_files(key, existing_files)
+
+        if not existing_files:
+            empty_action = menu.addAction("No recent files")
+            empty_action.setEnabled(False)
+            return
+
+        for item in existing_files:
+            path = Path(item)
+            action = menu.addAction(path.name)
+            action.setToolTip(item)
+            action.setStatusTip(item)
+            action.triggered.connect(
+                lambda checked=False, selected=item: callback(selected)
+            )
+
+    def _refresh_recent_file_menus(self) -> None:
+        """Refresh both recent-file menus from persisted settings."""
+        if not hasattr(self, "recent_vtu_menu") or not hasattr(self, "recent_obj_menu"):
+            return
+        self._populate_recent_menu(
+            self.recent_vtu_menu,
+            "recent_vtu_files",
+            self._open_recent_vtu_file,
+        )
+        self._populate_recent_menu(
+            self.recent_obj_menu,
+            "recent_obj_files",
+            self._open_recent_obj_bundle,
+        )
+
+    def _open_recent_vtu_file(self, path: str) -> None:
+        """Open one recent VTU file when it still exists."""
+        candidate = Path(path).expanduser().resolve(strict=False)
+        if not candidate.is_file():
+            self._remove_recent_file("recent_vtu_files", candidate)
+            self._show_error(f"Recent VTU file not found: {candidate}")
+            return
+        self.start_load_file_async(candidate, refresh=True)
+
+    def _open_recent_obj_bundle(self, path: str) -> None:
+        """Open one recent OBJ bundle when it still exists."""
+        candidate = Path(path).expanduser().resolve(strict=False)
+        if not candidate.is_file():
+            self._remove_recent_file("recent_obj_files", candidate)
+            self._show_error(f"Recent OBJ bundle not found: {candidate}")
+            return
+        self.start_load_obj_bundle_async(candidate)
+
     def _set_busy_state(self, busy: bool) -> None:
         """Enable or disable user actions while one background task is running."""
         is_dataset_ready = (
@@ -753,30 +1032,35 @@ class MainWindow(QtWidgets.QMainWindow):
         self,
         label_text: str,
         maximum: int,
-    ) -> QtWidgets.QProgressDialog:
+        *,
+        subject_path: str | Path | None = None,
+        can_cancel: bool = True,
+    ) -> _OperationProgressDialog:
         """Create a modal progress dialog for one long-running GUI operation."""
-        dialog = QtWidgets.QProgressDialog(label_text, "", 0, maximum, self)
-        dialog.setWindowTitle(DEFAULT_WINDOW_TITLE)
-        dialog.setWindowModality(QtCore.Qt.WindowModal)
-        dialog.setMinimumDuration(0)
-        dialog.setCancelButton(None)
-        dialog.setAutoClose(False)
-        dialog.setAutoReset(False)
-        dialog.setValue(0)
+        dialog = _OperationProgressDialog(
+            self,
+            title=DEFAULT_WINDOW_TITLE,
+            label_text=label_text,
+            maximum=maximum,
+            subject_path=subject_path,
+            can_cancel=can_cancel,
+        )
         dialog.show()
         QtWidgets.QApplication.processEvents()
         return dialog
 
     @staticmethod
     def _update_progress(
-        dialog: QtWidgets.QProgressDialog,
+        dialog: _OperationProgressDialog,
         value: int,
         label_text: str,
     ) -> None:
         """Advance one progress dialog and flush pending UI repaints."""
-        dialog.setLabelText(label_text)
-        dialog.setValue(value)
+        dialog.set_message(label_text)
+        dialog.set_progress(value)
         QtWidgets.QApplication.processEvents()
+        if value < dialog.progress_bar.maximum() and dialog.cancel_requested():
+            raise _OperationCancelled("Operation cancelled by the user.")
 
     @staticmethod
     def _load_file_task(
@@ -908,7 +1192,11 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             return
 
-        progress_dialog = self._create_progress_dialog(title, maximum)
+        progress_dialog = self._create_progress_dialog(
+            title,
+            maximum,
+            can_cancel=True,
+        )
         thread = QtCore.QThread(self)
         worker = _BackgroundTaskWorker(task_fn)
         worker.moveToThread(thread)
@@ -1025,6 +1313,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.vmax_spin.setValue(result.field_range[1])
         self._set_controls_enabled(True)
         self._remember_directory("last_vtu_directory", self.current_file_path)
+        self._add_recent_file("recent_vtu_files", self.current_file_path)
 
         if result.scene is not None:
             self.volume_panel.set_scene(
@@ -1045,6 +1334,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.obj_path_edit.setText(str(result.bundle.obj_path))
         self.bundle_panel.set_scene(result.scene)
         self._remember_directory("last_obj_bundle_directory", result.bundle.obj_path)
+        self._add_recent_file("recent_obj_files", result.bundle.obj_path)
         self.statusBar().showMessage(f"Loaded OBJ bundle {result.bundle.obj_path.name}")
         self._save_settings()
 
@@ -1197,7 +1487,12 @@ class MainWindow(QtWidgets.QMainWindow):
     ) -> None:
         """Load a VTU file, populate controls, and optionally refresh the view."""
         progress_dialog = (
-            self._create_progress_dialog("Loading VTU file...", 4 if refresh else 3)
+            self._create_progress_dialog(
+                "Loading VTU file...",
+                4 if refresh else 3,
+                subject_path=path,
+                can_cancel=True,
+            )
             if show_progress
             else None
         )
@@ -1225,6 +1520,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     progress_dialog.maximum(),
                     "VTU file loaded.",
                 )
+        except _OperationCancelled:
+            self.statusBar().showMessage("VTU loading cancelled.")
         finally:
             if progress_dialog is not None:
                 progress_dialog.close()
@@ -1237,7 +1534,12 @@ class MainWindow(QtWidgets.QMainWindow):
     ) -> None:
         """Load an OBJ/MTL/PNG bundle into the right viewport."""
         progress_dialog = (
-            self._create_progress_dialog("Loading OBJ bundle...", 2)
+            self._create_progress_dialog(
+                "Loading OBJ bundle...",
+                2,
+                subject_path=path,
+                can_cancel=True,
+            )
             if show_progress
             else None
         )
@@ -1257,6 +1559,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self._handle_loaded_obj_bundle_result(result)
             if progress_dialog is not None:
                 self._update_progress(progress_dialog, 2, "OBJ bundle loaded.")
+        except _OperationCancelled:
+            self.statusBar().showMessage("OBJ loading cancelled.")
         finally:
             if progress_dialog is not None:
                 progress_dialog.close()
@@ -1326,7 +1630,12 @@ class MainWindow(QtWidgets.QMainWindow):
         if not file_name:
             return
 
-        progress_dialog = self._create_progress_dialog("Exporting OBJ bundle...", 5)
+        progress_dialog = self._create_progress_dialog(
+            "Exporting OBJ bundle...",
+            5,
+            subject_path=file_name,
+            can_cancel=True,
+        )
         try:
             output_prefix = Path(file_name).with_suffix("")
             mapping_kwargs = self._current_mapping_kwargs()
@@ -1347,6 +1656,8 @@ class MainWindow(QtWidgets.QMainWindow):
             )
             self._handle_export_result(result)
             self._update_progress(progress_dialog, 5, "Export complete.")
+        except _OperationCancelled:
+            self.statusBar().showMessage("OBJ export cancelled.")
         finally:
             progress_dialog.close()
 
