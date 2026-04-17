@@ -271,6 +271,18 @@ class MainWindow(QtWidgets.QMainWindow):
             self.start_export_current_bundle_async
         )
 
+        self.clear_views_action = QtWidgets.QAction(
+            standard_icon(self, QtWidgets.QStyle.SP_DialogResetButton),
+            "Clear Views",
+            self,
+        )
+        self.clear_views_action.setToolTip(
+            "Unload the currently displayed VTU and OBJ scenes and reset both "
+            "viewports to an empty state."
+        )
+        self.clear_views_action.setStatusTip(self.clear_views_action.toolTip())
+        self.clear_views_action.triggered.connect(self.clear_views)
+
         self.reset_defaults_action = QtWidgets.QAction(
             standard_icon(self, QtWidgets.QStyle.SP_BrowserReload),
             "Reset GUI Defaults",
@@ -326,6 +338,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.file_menu.addAction(self.open_obj_action)
         self.file_menu.addSeparator()
         self.file_menu.addAction(self.export_bundle_action)
+        self.file_menu.addAction(self.clear_views_action)
 
         self.settings_menu = menu_bar.addMenu("&Settings")
         self.settings_menu.addAction(self.reset_defaults_action)
@@ -512,6 +525,33 @@ class MainWindow(QtWidgets.QMainWindow):
         ):
             widget.setEnabled(enabled)
         self.export_bundle_action.setEnabled(enabled)
+
+    def clear_views(self) -> None:
+        """Unload the currently displayed meshes and clear both viewports."""
+        self.current_file_path = None
+        self._current_grid = None
+        self._current_surface = None
+        self._current_summary = None
+        self._current_volume_scene = None
+        self._current_bundle = None
+        self._current_bundle_scene = None
+        self._startup_file_path = None
+        self._startup_bundle_path = None
+
+        self.vtu_path_edit.clear()
+        self.obj_path_edit.clear()
+        self.field_combo.blockSignals(True)
+        self.field_combo.clear()
+        self.field_combo.blockSignals(False)
+        self.volume_panel.clear_scene()
+        self.bundle_panel.clear_scene()
+        self._set_controls_enabled(False)
+
+        self._settings.remove("last_file_path")
+        self._settings.remove("last_obj_bundle_path")
+        self._settings.remove("last_field")
+        self._settings.sync()
+        self.statusBar().showMessage("Views cleared.")
 
     @staticmethod
     def _setting_to_bool(value: object, default: bool) -> bool:

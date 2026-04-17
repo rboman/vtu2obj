@@ -213,6 +213,7 @@ def test_main_window_exposes_help_and_credits_actions(
     assert window.github_action.toolTip()
     assert window.credits_action.toolTip()
     assert window.reset_defaults_action.text() == "Reset GUI Defaults"
+    assert window.clear_views_action.text() == "Clear Views"
 
 
 def test_main_window_prefers_stress_von_mises_on_doli(
@@ -396,3 +397,38 @@ def test_load_file_uses_progress_dialog_for_long_operation(
     window.load_file(sample_vtu_path, refresh=True, show_progress=True)
 
     assert progress_calls == [("Loading VTU file...", 4)]
+
+
+def test_clear_views_unloads_current_meshes(
+    qapplication: QtWidgets.QApplication,
+    sample_vtu_path: Path,
+    sample_obj_bundle,
+    tmp_path: Path,
+) -> None:
+    _ = qapplication
+    settings = QtCore.QSettings(
+        str(tmp_path / "gui_settings_clear.ini"),
+        QtCore.QSettings.IniFormat,
+    )
+    window = MainWindow(enable_vtk_view=False, settings=settings)
+    window.load_file(sample_vtu_path, refresh=False, show_progress=False)
+    window.load_obj_bundle(sample_obj_bundle.obj_path, show_progress=False)
+    window._save_settings()
+
+    window.clear_views()
+
+    assert window.current_file_path is None
+    assert window._current_grid is None
+    assert window._current_surface is None
+    assert window._current_summary is None
+    assert window._current_bundle is None
+    assert window._current_volume_scene is None
+    assert window._current_bundle_scene is None
+    assert window.vtu_path_edit.text() == ""
+    assert window.obj_path_edit.text() == ""
+    assert window.field_combo.count() == 0
+    assert window.volume_panel.info_text_edit.toPlainText() == "No mesh loaded."
+    assert window.bundle_panel.info_text_edit.toPlainText() == "No mesh loaded."
+    assert window.export_button.isEnabled() is False
+    assert settings.value("last_file_path") is None
+    assert settings.value("last_obj_bundle_path") is None
