@@ -1,17 +1,17 @@
-# Native extension placeholder
+# Native bridge placeholder
 
 This directory is reserved for a future optional `C++ + SWIG` bridge related to
 the `fossils` solver.
 
-Current expectations:
+Current status:
 
-- the native bridge stays optional,
-- the VTK conversion pipeline remains implemented in Python,
-- the main package and CLI keep working when nothing in `native/` is built.
+- nothing in this directory is required to run the project,
+- the main VTU-to-OBJ pipeline is implemented in Python with VTK,
+- the CLI and GUI must keep working even when no native module exists.
 
-If the native integration becomes real later, this directory can host:
+If a native integration becomes necessary later, this directory may host:
 
 - SWIG interface files,
 - C++ bridge code,
 - optional CMake files,
-- and packaging glue for a compiled extension.
+- packaging glue for a compiled extension.

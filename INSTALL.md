@@ -1,168 +1,150 @@
-# Installation instructions for `fossils-vtu2obj`
+# Installation
 
-These steps install the project from GitHub in an isolated Python environment.
+This document covers full installation and packaging workflows for
+`fossils-vtu2obj`.
 
 ## Requirements
 
-* Python 3.10 or newer
-* Git installed
-* Internet access to download Python packages
+- Python 3.10 or newer
+- Git
+- Internet access to download Python packages
 
-## Recommended installation method: use a virtual environment
+## Recommended setup
 
-Using a virtual environment keeps this project isolated from other Python installations on your computer.
-
-### 1. Open a terminal
-
-On Windows, you can use:
-
-* PowerShell
-* Command Prompt
-
-### 2. Clone the repository
+Clone the repository and create a virtual environment:
 
 ```bash
 git clone https://github.com/rboman/vtu2obj.git
 cd vtu2obj
-```
-
-### 3. Create a virtual environment
-
-```bash
 python -m venv .venv
 ```
 
-### 4. Activate the virtual environment
+Activate it:
 
-On Windows PowerShell:
+Windows PowerShell:
 
 ```powershell
 .venv\Scripts\Activate.ps1
 ```
 
-On Windows Command Prompt:
+Windows Command Prompt:
 
 ```bat
 .venv\Scripts\activate.bat
 ```
 
-On Linux or macOS:
+Linux or macOS:
 
 ```bash
 source .venv/bin/activate
 ```
 
-After activation, your terminal should usually show `(.venv)` at the beginning of the prompt.
-
-### 5. Upgrade pip
+Upgrade `pip`:
 
 ```bash
 python -m pip install --upgrade pip
 ```
 
-### 6. Install the project
+## Installation modes
 
-Install the standard command-line version:
+Standard CLI install:
 
 ```bash
 pip install .
 ```
 
-If you also want the graphical interface dependencies:
+GUI install:
 
 ```bash
 pip install ".[gui]"
 ```
 
-If you want development tools as well:
+Development tools:
 
 ```bash
 pip install ".[dev]"
 ```
 
-If you want everything:
+Editable development install with GUI:
 
 ```bash
-pip install ".[gui,dev]"
+pip install -e ".[gui,dev]"
 ```
 
-## 7. Check that the installation works
+## Verify the installation
 
-Run:
-
-```bash
-fossils-vtu2obj --help
-```
-
-If that works, the package is installed correctly.
-
-## 8. Example usage
-
-Once installed, the command-line tool is available as:
-
-```bash
-fossils-vtu2obj
-```
-
-You can display the help with:
+Check the CLI:
 
 ```bash
 fossils-vtu2obj --help
 ```
 
-## Updating the project later
+Check the GUI command:
 
-If you already cloned the repository and want the latest version:
+```bash
+fossils-vtu2obj gui
+```
+
+## Updating an existing checkout
 
 ```bash
 git pull
 pip install --upgrade .
 ```
 
-## Optional: developer installation
-
-If you plan to modify the source code yourself, install it in editable mode:
+For an editable environment:
 
 ```bash
 pip install -e ".[gui,dev]"
 ```
 
-This is mainly useful for development, not for normal usage.
+## Windows notes
 
-## Build a redistributable Windows installer
+If PowerShell blocks script execution, either use Command Prompt or allow local
+scripts for your user session.
 
-If you want to distribute the application to users without Python, you can
-build:
+A simple Command Prompt fallback is:
 
-* a one-dir application bundle with PyInstaller,
-* a setup executable with Inno Setup.
+```bat
+.venv\Scripts\activate.bat
+```
 
-### Requirements for packaging
+## Packaging a Windows installer
 
-* Inno Setup 6 installed (so `ISCC.exe` is available)
-* project installed with development and GUI extras:
+The repository includes:
+
+- `build_installer.ps1`
+- `fossils_vtu2obj.spec`
+- `installer.iss`
+
+These support a Windows packaging workflow based on **PyInstaller** and
+**Inno Setup**.
+
+### Packaging prerequisites
+
+- install the project with GUI and development extras:
 
 ```bash
 pip install -e ".[gui,dev]"
 ```
 
-### Build everything (recommended)
+- install Inno Setup 6 so that `ISCC.exe` is available
 
-From the repository root, run:
+### Build everything
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File build_installer.ps1
 ```
 
-### Useful packaging options
+### Useful variants
 
-Build only the Inno Setup installer from an existing `dist/`:
+Only rebuild the setup executable:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File build_installer.ps1 -SkipPyInstaller
 ```
 
-Build only the PyInstaller one-dir bundle:
+Only rebuild the PyInstaller application bundle:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File build_installer.ps1 -SkipInno
@@ -170,61 +152,19 @@ powershell -ExecutionPolicy Bypass -File build_installer.ps1 -SkipInno
 
 ### Packaging outputs
 
-* `dist/fossils_vtu2obj/` contains `fossils-vtu2obj.exe` (CLI) and
-	`fossils-vtu2obj-gui.exe` (GUI)
-* `dist/installer/` contains the generated setup executable
+- `dist/fossils_vtu2obj/`
+  - `fossils-vtu2obj.exe`
+  - `fossils-vtu2obj-gui.exe`
+- `dist/installer/`
+  - generated setup executable
 
-### Troubleshooting: Windows Defender during build
+### Packaging note
 
-If Defender reports a threat during packaging in a temporary PyInstaller path
-(often with VTK libraries and a `!upx` suffix), this is typically a heuristic
-false positive.
-
-This project now disables UPX compression by default in:
-
-* `fossils_vtu2obj.spec` (`upx=False`)
-* the packaging pipeline that uses this spec file directly
-
-If you still hit the issue:
-
-* update Defender signatures,
-* restore/quarantine exception only for the blocked temporary file if needed,
-* rerun the build command,
-* optionally add a temporary exclusion on the local PyInstaller cache folder
-  for build time only, then remove that exclusion afterward.
+The PyInstaller specification in this repository is configured to avoid common
+Windows antivirus false positives related to UPX-compressed binaries.
 
 ## Leaving the environment
 
-When you are done, deactivate the virtual environment:
-
 ```bash
 deactivate
-```
-
-## Notes for Windows users
-
-If PowerShell blocks the activation script, you can either:
-
-* use Command Prompt instead of PowerShell, or
-* allow local scripts in PowerShell for your user session
-
-A simple workaround is to use:
-
-```bat
-.venv\Scripts\activate.bat
-```
-
-from Command Prompt.
-
-## Quick install summary
-
-```bash
-git clone https://github.com/rboman/vtu2obj.git
-cd vtu2obj
-python -m venv .venv
-# activate the environment 
-.venv\Scripts\activate # (Windows)
-python -m pip install --upgrade pip
-pip install .[gui]
-fossils-vtu2obj gui
 ```

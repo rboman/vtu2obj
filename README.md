@@ -6,116 +6,73 @@ files (`.vtu`) into:
 - an extracted surface mesh,
 - an OBJ file with UV coordinates,
 - a PNG palette texture generated from a selected scalar field,
-- and a matching MTL file for straightforward Blender import.
+- and a matching MTL file for direct import in tools such as Blender.
 
-The project targets post-processing workflows around the **fossils** finite
-element solver and keeps the core conversion pipeline **VTK-only**.
+The project is designed for post-processing workflows around the **fossils**
+finite element solver and keeps the core conversion pipeline **VTK-only**.
 
 ![](docs/images/panthera_vtu2obj.jpg)
 
 ![](docs/images/panthera_blender.jpg)
 
-## Current status
+## Quick start
 
-The first useful milestone is now implemented:
-
-- VTU loading and dataset inspection,
-- surface extraction with VTK,
-- scalar and textured preview with VTK,
-- palette texture PNG generation,
-- UV generation from scalar values,
-- OBJ/MTL/PNG export,
-- CLI with `inspect`, `list-arrays`, `preview`, `convert`, and `gui`,
-- minimal PyQt5 GUI,
-- deterministic test suite and linting.
-
-The repository also stays ready for a future optional `C++ + SWIG` bridge via
-the reserved `native/` and `integrations/` areas.
-
-## Supported scalar fields
-
-The current conversion and preview pipeline supports:
-
-- scalar **point-data** arrays directly,
-- scalar **cell-data** arrays after VTK conversion to point data on the
-  extracted surface.
-
-Multi-component fields such as vectors and tensors are listed by inspection but
-cannot yet be used directly as conversion fields.
-
-## Why the texture is a palette image
-
-This project intentionally avoids diagonal-only textures.
-
-Instead, it generates a robust 2D palette texture:
-
-- the image width matches the number of discrete color bins,
-- every row repeats the same palette,
-- the scalar value is mapped to the `U` coordinate,
-- the `V` coordinate stays constant.
-
-That makes the exported OBJ/MTL/PNG bundle more stable under downstream texture
-filtering in tools such as Blender.
-
-## Installation
-
-Base install:
+Install the command-line tool:
 
 ```bash
-pip install -e .
+pip install .
 ```
 
-Development tools:
+Install the GUI as well:
 
 ```bash
-pip install -e .[dev]
+pip install ".[gui]"
 ```
 
-GUI dependencies:
+Try the example dataset:
 
 ```bash
-pip install -e .[gui]
+fossils-vtu2obj inspect examples/beam3d.vtu
+fossils-vtu2obj list-arrays examples/beam3d.vtu
+fossils-vtu2obj preview examples/beam3d.vtu --field stress_von_mises
+fossils-vtu2obj convert examples/beam3d.vtu out/beam --field stress_von_mises
+fossils-vtu2obj gui
 ```
 
-## Build a Windows installer
+## What the tool does
 
-You can generate redistributable Windows binaries with **PyInstaller** and a
-setup executable with **Inno Setup**.
+The current application can:
 
-Prerequisites:
+- inspect VTU datasets,
+- list point-data and cell-data arrays,
+- extract the outer surface with VTK,
+- preview scalar coloring or textured output with VTK,
+- generate a discrete palette texture PNG,
+- generate UV coordinates from a scalar field,
+- export `OBJ + MTL + PNG`,
+- open a GUI with a VTU view and an OBJ bundle comparison view.
 
-- install development and GUI dependencies,
-- install Inno Setup 6 (provides `ISCC.exe`).
+## Typical workflow
 
-```bash
-pip install -e .[gui,dev]
-```
+1. Open a `.vtu` result file.
+2. Choose a scalar field such as `stress_von_mises`.
+3. Choose a colormap and scalar range.
+4. Preview the result.
+5. Export an OBJ bundle.
+6. Open the exported OBJ in Blender or another DCC tool.
 
-Run the full packaging pipeline from the repository root:
+The exported texture is a robust **palette texture**:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File build_installer.ps1
-```
+- each row repeats the same discrete colormap,
+- the scalar field is encoded in the `U` coordinate,
+- `V` stays constant.
 
-Useful variants:
+This makes the exported mesh more stable under downstream texture filtering
+than a diagonal-only texture approach.
 
-```powershell
-# Skip PyInstaller and only rebuild the setup executable
-powershell -ExecutionPolicy Bypass -File build_installer.ps1 -SkipPyInstaller
+## CLI examples
 
-# Skip Inno Setup and only rebuild the one-dir application bundle
-powershell -ExecutionPolicy Bypass -File build_installer.ps1 -SkipInno
-```
-
-Generated outputs:
-
-- `dist/fossils_vtu2obj/` (one-dir bundle with `fossils-vtu2obj.exe` and
-  `fossils-vtu2obj-gui.exe`),
-- `dist/installer/` (final setup executable produced by Inno Setup).
-
-## CLI usage
-
-Inspect a file:
+Inspect a dataset:
 
 ```bash
 fossils-vtu2obj inspect examples/beam3d.vtu
@@ -135,7 +92,7 @@ fossils-vtu2obj preview examples/beam3d.vtu \
   --colormap rainbow
 ```
 
-Preview the textured result:
+Preview the textured surface:
 
 ```bash
 fossils-vtu2obj preview examples/beam3d.vtu \
@@ -144,7 +101,7 @@ fossils-vtu2obj preview examples/beam3d.vtu \
   --textured
 ```
 
-Convert to OBJ/MTL/PNG:
+Export an OBJ bundle:
 
 ```bash
 fossils-vtu2obj convert examples/beam3d.vtu out/beam \
@@ -152,140 +109,61 @@ fossils-vtu2obj convert examples/beam3d.vtu out/beam \
   --colormap rainbow \
   --vmin 0 \
   --vmax 120 \
-  --n-colors 256
+  --n-colors 16
 ```
 
-Convert without normals:
-
-```bash
-fossils-vtu2obj convert examples/beam3d.vtu out/beam_raw \
-  --field stress_von_mises \
-  --no-normals
-```
-
-Convert a cell-data field:
+Export a cell-data field:
 
 ```bash
 fossils-vtu2obj convert examples/beam3d.vtu out/beam_cell \
   --field cell_stress_von_mises \
-  --colormap cool_to_warm \
-  --n-colors 256
+  --colormap cool_to_warm
 ```
 
-Launch the GUI:
+Check the optional native bridge status:
 
 ```bash
-fossils-vtu2obj gui
+fossils-vtu2obj native-status
 ```
 
-## Example dataset
+## GUI overview
 
-The repository includes [beam3d.vtu](examples/beam3d.vtu) as a real sample
-produced by `fossils`.
+The GUI currently provides:
 
-On this file, the current inspection reports:
+- a left viewport dedicated to VTU inspection and conversion,
+- a right viewport dedicated to exported OBJ/MTL/PNG bundle comparison,
+- tabs `Controls`, `Display`, and `Info` under each viewport,
+- scalar field and colormap selection,
+- texture preview for the loaded OBJ bundle,
+- recent files lists,
+- per-view display options such as mesh edges, trihedron, bounding box,
+  background preset, lighting preset, and camera presets.
 
-- `264` points,
-- `150` volume cells,
-- `24` point arrays,
-- `16` cell arrays.
+## Included examples
 
-Useful scalar fields include:
+The repository currently includes:
 
-- `stress_von_mises`
-- `strain_von_mises`
-- `cell_stress_von_mises`
-- `cell_strain_von_mises`
+- [examples/beam3d.vtu](examples/beam3d.vtu)
+- [examples/doli.vtu](examples/doli.vtu)
 
-## Blender workflow
+See [examples/README.md](examples/README.md) for a short description of each
+dataset.
 
-The intended workflow is:
+## Current limitations
 
-1. run `convert`,
-2. import the generated OBJ into Blender,
-3. let Blender load the accompanying MTL,
-4. verify that the material references the generated PNG texture.
+- Only scalar fields can drive preview and export.
+- Vector and tensor arrays are listed during inspection but are not directly
+  convertible.
+- The GUI uses cooperative cancellation for long-running operations; an active
+  VTK call cannot be interrupted immediately.
+- The optional native `fossils` bridge is not implemented yet.
 
-Because the UVs encode the scalar field directly, no unwrap or bake step is
-needed in Blender for the current workflow.
+## Documentation
 
-By default the converter also writes point normals into the OBJ when possible.
-If you want a more minimal geometry export, use `--no-normals`.
-
-## Project layout
-
-```text
-.
-|-- AGENTS.md
-|-- README.md
-|-- pyproject.toml
-|-- native/
-|   `-- README.md
-|-- src/
-|   `-- fossils_vtu2obj/
-|       |-- __init__.py
-|       |-- __main__.py
-|       |-- arrays.py
-|       |-- cli.py
-|       |-- colormaps.py
-|       |-- export_obj.py
-|       |-- io_vtk.py
-|       |-- logging_utils.py
-|       |-- model.py
-|       |-- preview.py
-|       |-- surface.py
-|       |-- texture.py
-|       |-- uvmap.py
-|       |-- integrations/
-|       |   |-- __init__.py
-|       |   `-- fossils.py
-|       `-- gui/
-|           |-- __init__.py
-|           |-- app.py
-|           |-- main_window.py
-|           `-- vtk_view.py
-`-- tests/
-    |-- conftest.py
-    |-- test_arrays.py
-    |-- test_cli.py
-    |-- test_colormaps.py
-    |-- test_export_obj.py
-    |-- test_gui.py
-    |-- test_integrations.py
-    |-- test_preview.py
-    |-- test_surface.py
-    |-- test_texture.py
-    `-- test_uvmap.py
-```
-
-## Optional future native integration
-
-The future native integration is planned as an **optional bridge**, not as a
-replacement for the VTK conversion code.
-
-- `src/fossils_vtu2obj/integrations/` is the Python-facing boundary.
-- `native/` is reserved for future `C++ + SWIG` sources and build files.
-- the default CLI and test suite must keep working even when no native bridge
-  is installed.
-
-The bootstrap uses `setuptools.build_meta` today because it keeps the pure
-Python package simple while preserving a later migration path toward a more
-CMake-oriented backend if the native bridge becomes real.
-
-## Known limits
-
-- preview and conversion currently require a scalar field, not a vector or
-  tensor field,
-- GUI preview tests use a non-embedded fallback mode in headless CI because
-  offscreen Windows OpenGL is fragile with the Qt VTK widget,
-- the GUI persists only a lightweight subset of settings for now,
-- there is no dedicated normals control yet in the CLI preview path.
-
-## Development
-
-Run the default checks with:
-
-```bash
-python -m ruff check .
-python -m pytest -q
-```
+- [INSTALL.md](INSTALL.md) for complete installation and packaging notes
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the technical architecture
+- [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) for the current state and
+  roadmap
+- [docs/AI_HANDOFF.md](docs/AI_HANDOFF.md) for project memory aimed at future
+  AI sessions or other coding agents
+- [AGENTS.md](AGENTS.md) for compact agent-oriented project guidance
