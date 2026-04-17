@@ -91,6 +91,14 @@ def test_main_window_loads_scalar_fields(
     assert window.settings_menu.title() == "&Settings"
     assert hasattr(window, "reset_defaults_action")
     assert not hasattr(window, "reset_defaults_button")
+    assert window.volume_panel.tabs.tabText(0) == "Controls"
+    assert window.volume_panel.tabs.tabText(1) == "Display"
+    assert window.volume_panel.tabs.tabText(2) == "Info"
+    assert window.volume_panel.tabs.currentIndex() == 0
+    assert window.bundle_panel.tabs.tabText(0) == "Controls"
+    assert window.bundle_panel.tabs.tabText(1) == "Display"
+    assert window.bundle_panel.tabs.tabText(2) == "Info"
+    assert window.bundle_panel.tabs.currentIndex() == 0
     assert window.texture_preview_label.text() == "No texture loaded"
     assert window.texture_dimensions_label.text() == "Size: -"
     assert "Display / Color Mapping" in [

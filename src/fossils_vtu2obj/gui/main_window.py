@@ -380,20 +380,6 @@ class MainWindow(QtWidgets.QMainWindow):
         root_layout.setContentsMargins(8, 8, 8, 8)
         root_layout.setSpacing(8)
 
-        controls_layout = QtWidgets.QGridLayout()
-        controls_layout.setContentsMargins(0, 0, 0, 0)
-        controls_layout.setHorizontalSpacing(8)
-        controls_layout.setVerticalSpacing(8)
-        root_layout.addLayout(controls_layout, stretch=0)
-
-        self.vtu_controls_group = self._build_vtu_controls_group()
-        self.obj_controls_group = self._build_obj_controls_group()
-        controls_layout.addWidget(self.vtu_controls_group, 0, 0)
-        controls_layout.addWidget(self.obj_controls_group, 0, 1)
-        controls_layout.setColumnStretch(0, 1)
-        controls_layout.setColumnStretch(1, 1)
-        controls_layout.setRowStretch(0, 0)
-
         self.main_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal, self)
         self.main_splitter.setToolTip(
             "Resize the left VTU workflow panel and the right OBJ comparison "
@@ -417,6 +403,26 @@ class MainWindow(QtWidgets.QMainWindow):
         self.main_splitter.addWidget(self.bundle_panel)
         self.main_splitter.setStretchFactor(0, 1)
         self.main_splitter.setStretchFactor(1, 1)
+
+        self.vtu_controls_group = self._build_vtu_controls_group()
+        self.volume_panel.insert_tab(
+            self.vtu_controls_group,
+            "Controls",
+            tooltip=(
+                "VTU loading, scalar mapping, and export controls for the left "
+                "viewport."
+            ),
+        )
+
+        self.obj_controls_group = self._build_obj_controls_group()
+        self.bundle_panel.insert_tab(
+            self.obj_controls_group,
+            "Controls",
+            tooltip=(
+                "OBJ bundle loading and texture-preview controls for the right "
+                "viewport."
+            ),
+        )
 
         self.statusBar().showMessage("Open a VTU file or an OBJ bundle to begin.")
 

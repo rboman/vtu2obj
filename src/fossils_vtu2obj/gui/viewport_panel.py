@@ -50,6 +50,20 @@ class MeshViewportPanel(QtWidgets.QWidget):
         """Return the current scene displayed by the panel."""
         return self._scene
 
+    def insert_tab(
+        self,
+        widget: QtWidgets.QWidget,
+        title: str,
+        *,
+        tooltip: str | None = None,
+        index: int = 0,
+    ) -> None:
+        """Insert one extra tab, typically a compact controls panel."""
+        self.tabs.insertTab(index, widget, title)
+        if tooltip:
+            self.tabs.setTabToolTip(index, tooltip)
+        self.tabs.setCurrentIndex(index)
+
     def _build_ui(self, title: str, enable_vtk_view: bool) -> None:
         """Create the panel widgets."""
         layout = QtWidgets.QVBoxLayout(self)
