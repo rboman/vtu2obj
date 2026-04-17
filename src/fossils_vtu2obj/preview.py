@@ -8,6 +8,22 @@ from pathlib import Path
 import vtk
 
 from .colormaps import build_lookup_table, require_colormap_name
+from .defaults import (
+    DEFAULT_COLORMAP_NAME,
+    DEFAULT_EDGE_LINE_OFFSET,
+    DEFAULT_EDGE_LINE_WIDTH,
+    DEFAULT_N_COLORS,
+    DEFAULT_RENDERER_BACKGROUND,
+    DEFAULT_SCALAR_BAR_HEIGHT,
+    DEFAULT_SCALAR_BAR_LABEL_COUNT,
+    DEFAULT_SCALAR_BAR_LABEL_FONT_SIZE,
+    DEFAULT_SCALAR_BAR_MAXIMUM_HEIGHT_PX,
+    DEFAULT_SCALAR_BAR_MAXIMUM_WIDTH_PX,
+    DEFAULT_SCALAR_BAR_POSITION,
+    DEFAULT_SCALAR_BAR_TITLE_FONT_SIZE,
+    DEFAULT_SCALAR_BAR_WIDTH,
+    DEFAULT_TEXTURE_HEIGHT,
+)
 from .export_obj import resolve_obj_bundle_paths
 from .io_vtk import load_unstructured_grid
 from .model import ArrayAssociation, MeshInfo, ObjBundlePaths
@@ -61,7 +77,7 @@ def resolve_dataset_scalar_field(
 def _build_base_renderer() -> vtk.vtkRenderer:
     """Create a renderer with the shared visual defaults."""
     renderer = vtk.vtkRenderer()
-    renderer.SetBackground(0.3199969482, 0.3400015259, 0.4299992370)
+    renderer.SetBackground(*DEFAULT_RENDERER_BACKGROUND)
     renderer.GradientBackgroundOff()
     return renderer
 
@@ -75,12 +91,12 @@ def _build_edge_actor(dataset: vtk.vtkDataSet) -> vtk.vtkActor:
     mapper.SetInputConnection(edge_filter.GetOutputPort())
     mapper.ScalarVisibilityOff()
     mapper.SetResolveCoincidentTopologyToPolygonOffset()
-    mapper.SetRelativeCoincidentTopologyLineOffsetParameters(0.0, -8.0)
+    mapper.SetRelativeCoincidentTopologyLineOffsetParameters(*DEFAULT_EDGE_LINE_OFFSET)
 
     actor = vtk.vtkActor()
     actor.SetMapper(mapper)
     actor.GetProperty().SetLighting(False)
-    actor.GetProperty().SetLineWidth(1.8)
+    actor.GetProperty().SetLineWidth(DEFAULT_EDGE_LINE_WIDTH)
     actor.GetProperty().SetRenderLinesAsTubes(True)
     actor.SetVisibility(False)
     actor.SetPickable(False)
@@ -95,20 +111,20 @@ def _build_scalar_bar(
     scalar_bar = vtk.vtkScalarBarActor()
     scalar_bar.SetLookupTable(lookup_table)
     scalar_bar.SetTitle(title)
-    scalar_bar.SetNumberOfLabels(5)
-    scalar_bar.SetWidth(0.07)
-    scalar_bar.SetHeight(0.82)
-    scalar_bar.SetPosition(0.90, 0.10)
+    scalar_bar.SetNumberOfLabels(DEFAULT_SCALAR_BAR_LABEL_COUNT)
+    scalar_bar.SetWidth(DEFAULT_SCALAR_BAR_WIDTH)
+    scalar_bar.SetHeight(DEFAULT_SCALAR_BAR_HEIGHT)
+    scalar_bar.SetPosition(*DEFAULT_SCALAR_BAR_POSITION)
     scalar_bar.SetUnconstrainedFontSize(True)
-    scalar_bar.SetMaximumWidthInPixels(60)
-    scalar_bar.SetMaximumHeightInPixels(420)
+    scalar_bar.SetMaximumWidthInPixels(DEFAULT_SCALAR_BAR_MAXIMUM_WIDTH_PX)
+    scalar_bar.SetMaximumHeightInPixels(DEFAULT_SCALAR_BAR_MAXIMUM_HEIGHT_PX)
 
     title_text = scalar_bar.GetTitleTextProperty()
-    title_text.SetFontSize(14)
+    title_text.SetFontSize(DEFAULT_SCALAR_BAR_TITLE_FONT_SIZE)
     title_text.BoldOff()
 
     label_text = scalar_bar.GetLabelTextProperty()
-    label_text.SetFontSize(11)
+    label_text.SetFontSize(DEFAULT_SCALAR_BAR_LABEL_FONT_SIZE)
     label_text.BoldOff()
     return scalar_bar
 
@@ -168,10 +184,10 @@ def build_volume_preview_scene(
     dataset: vtk.vtkDataSet,
     field_name: str,
     *,
-    colormap: str = "rainbow",
+    colormap: str = DEFAULT_COLORMAP_NAME,
     vmin: float | None = None,
     vmax: float | None = None,
-    n_colors: int = 256,
+    n_colors: int = DEFAULT_N_COLORS,
     source_path: str | Path | None = None,
 ) -> PreviewScene:
     """Build a renderer for the original volume mesh colored by one scalar field."""
@@ -224,10 +240,10 @@ def build_scalar_preview_scene(
     surface: vtk.vtkPolyData,
     field_name: str,
     *,
-    colormap: str = "rainbow",
+    colormap: str = DEFAULT_COLORMAP_NAME,
     vmin: float | None = None,
     vmax: float | None = None,
-    n_colors: int = 256,
+    n_colors: int = DEFAULT_N_COLORS,
     source_path: str | Path | None = None,
 ) -> PreviewScene:
     """Build a renderer that previews a scalar field with a lookup table."""
@@ -278,11 +294,11 @@ def build_textured_preview_scene(
     surface: vtk.vtkPolyData,
     field_name: str,
     *,
-    colormap: str = "rainbow",
+    colormap: str = DEFAULT_COLORMAP_NAME,
     vmin: float | None = None,
     vmax: float | None = None,
-    n_colors: int = 256,
-    texture_height: int = 16,
+    n_colors: int = DEFAULT_N_COLORS,
+    texture_height: int = DEFAULT_TEXTURE_HEIGHT,
     source_path: str | Path | None = None,
 ) -> PreviewScene:
     """Build a renderer that previews the textured surface result."""
@@ -428,10 +444,10 @@ def preview_scalar_field(
     input_path: str | Path,
     field_name: str,
     *,
-    colormap: str = "rainbow",
+    colormap: str = DEFAULT_COLORMAP_NAME,
     vmin: float | None = None,
     vmax: float | None = None,
-    n_colors: int = 256,
+    n_colors: int = DEFAULT_N_COLORS,
 ) -> None:
     """Open a preview window using scalar coloring."""
     surface = load_surface_for_preview(input_path)
@@ -451,11 +467,11 @@ def preview_textured_surface(
     input_path: str | Path,
     field_name: str,
     *,
-    colormap: str = "rainbow",
+    colormap: str = DEFAULT_COLORMAP_NAME,
     vmin: float | None = None,
     vmax: float | None = None,
-    n_colors: int = 256,
-    texture_height: int = 16,
+    n_colors: int = DEFAULT_N_COLORS,
+    texture_height: int = DEFAULT_TEXTURE_HEIGHT,
 ) -> None:
     """Open a preview window using the generated texture."""
     surface = load_surface_for_preview(input_path)

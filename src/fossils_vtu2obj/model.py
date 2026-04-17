@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from .defaults import DEFAULT_COLORMAP_NAME, DEFAULT_N_COLORS, DEFAULT_TEXTURE_HEIGHT
+
 ArrayAssociation = Literal["point", "cell"]
 RgbColor = tuple[float, float, float]
 
@@ -51,11 +53,11 @@ class ScalarMappingOptions:
     """Hold scalar-to-color mapping parameters."""
 
     field_name: str
-    colormap: str = "rainbow"
+    colormap: str = DEFAULT_COLORMAP_NAME
     vmin: float | None = None
     vmax: float | None = None
-    n_colors: int = 256
-    texture_height: int = 16
+    n_colors: int = DEFAULT_N_COLORS
+    texture_height: int = DEFAULT_TEXTURE_HEIGHT
 
 
 @dataclass(frozen=True)

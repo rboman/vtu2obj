@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import vtk
 
+from .defaults import DEFAULT_NORMALS_FEATURE_ANGLE, DEFAULT_NORMALS_SPLITTING
+
 
 def extract_surface(
     dataset: vtk.vtkDataSet,
@@ -34,8 +36,8 @@ def extract_surface(
 def generate_surface_normals(
     polydata: vtk.vtkPolyData,
     *,
-    splitting: bool = True,
-    feature_angle: float = 45.0,
+    splitting: bool = DEFAULT_NORMALS_SPLITTING,
+    feature_angle: float = DEFAULT_NORMALS_FEATURE_ANGLE,
 ) -> vtk.vtkPolyData:
     """Generate point normals on a surface mesh."""
     if not isinstance(polydata, vtk.vtkPolyData):

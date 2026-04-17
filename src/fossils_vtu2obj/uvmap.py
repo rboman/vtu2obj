@@ -6,7 +6,7 @@ import math
 
 import vtk
 
-DEFAULT_V_COORD = 0.5
+from .defaults import DEFAULT_N_COLORS, DEFAULT_V_COORD
 
 
 def validate_color_bins(n_colors: int) -> int:
@@ -133,7 +133,7 @@ def apply_scalar_uv_map(
     *,
     vmin: float | None = None,
     vmax: float | None = None,
-    n_colors: int = 256,
+    n_colors: int = DEFAULT_N_COLORS,
     v_coord: float = DEFAULT_V_COORD,
 ) -> vtk.vtkPolyData:
     """Attach texture coordinates derived from scalar values."""

@@ -6,8 +6,31 @@ from pathlib import Path
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
-from ..arrays import list_cell_arrays, list_point_arrays
+from ..arrays import (
+    preferred_scalar_field_name,
+    scalar_field_names,
+)
 from ..colormaps import list_colormap_names
+from ..defaults import (
+    DEFAULT_BUNDLE_EDGE_COLOR,
+    DEFAULT_BUNDLE_SHOW_AXES,
+    DEFAULT_BUNDLE_SHOW_EDGES,
+    DEFAULT_COLORMAP_NAME,
+    DEFAULT_GITHUB_URL,
+    DEFAULT_GUI_SPLITTER_SIZES,
+    DEFAULT_N_COLORS,
+    DEFAULT_PREFERRED_SCALAR_FIELD_NAME,
+    DEFAULT_SPINBOX_DECIMALS,
+    DEFAULT_SPINBOX_MAX,
+    DEFAULT_SPINBOX_MIN,
+    DEFAULT_SPINBOX_STEP,
+    DEFAULT_VOLUME_EDGE_COLOR,
+    DEFAULT_VOLUME_SHOW_AXES,
+    DEFAULT_VOLUME_SHOW_EDGES,
+    DEFAULT_WINDOW_HEIGHT,
+    DEFAULT_WINDOW_TITLE,
+    DEFAULT_WINDOW_WIDTH,
+)
 from ..export_obj import export_obj_bundle, resolve_obj_bundle_paths
 from ..io_vtk import load_unstructured_grid, summarize_unstructured_grid
 from ..model import DatasetSummary, ViewDisplayOptions
@@ -28,16 +51,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
     ORGANIZATION_NAME = "fossils"
     APPLICATION_NAME = "fossils-vtu2obj"
-    GITHUB_URL = "https://github.com/rboman/vtu2obj"
+    GITHUB_URL = DEFAULT_GITHUB_URL
     VOLUME_DEFAULTS = ViewDisplayOptions(
-        show_edges=False,
-        edge_color=(0.78, 0.80, 0.84),
-        show_axes=True,
+        show_edges=DEFAULT_VOLUME_SHOW_EDGES,
+        edge_color=DEFAULT_VOLUME_EDGE_COLOR,
+        show_axes=DEFAULT_VOLUME_SHOW_AXES,
     )
     BUNDLE_DEFAULTS = ViewDisplayOptions(
-        show_edges=False,
-        edge_color=(0.90, 0.90, 0.92),
-        show_axes=True,
+        show_edges=DEFAULT_BUNDLE_SHOW_EDGES,
+        edge_color=DEFAULT_BUNDLE_EDGE_COLOR,
+        show_axes=DEFAULT_BUNDLE_SHOW_AXES,
     )
 
     def __init__(
@@ -48,9 +71,9 @@ class MainWindow(QtWidgets.QMainWindow):
         settings: QtCore.QSettings | None = None,
     ) -> None:
         super().__init__()
-        self.setWindowTitle("fossils-vtu2obj")
+        self.setWindowTitle(DEFAULT_WINDOW_TITLE)
         self.setWindowIcon(create_app_icon())
-        self.resize(1600, 900)
+        self.resize(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT)
 
         self.current_file_path: Path | None = None
         self._current_grid = None
@@ -91,185 +114,98 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _build_ui(self) -> None:
         """Create the window layout and interactive controls."""
+        self._build_actions()
         self._build_menus()
+
         central_widget = QtWidgets.QWidget(self)
         self.setCentralWidget(central_widget)
+        root_layout = QtWidgets.QVBoxLayout(central_widget)
 
-        layout = QtWidgets.QVBoxLayout(central_widget)
-        controls_layout = QtWidgets.QGridLayout()
-        layout.addLayout(controls_layout)
+        self.main_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal, self)
+        self.main_splitter.setToolTip(
+            "Resize the left VTU workflow panel and the right OBJ comparison "
+            "panel independently."
+        )
+        root_layout.addWidget(self.main_splitter, stretch=1)
 
-        self.open_button = QtWidgets.QPushButton("Open VTU...")
-        self.open_button.setIcon(
-            standard_icon(self, QtWidgets.QStyle.SP_DialogOpenButton)
-        )
-        self.open_button.setToolTip(
-            "Open a VTU results file and populate the field, range, and preview "
-            "controls from that dataset."
-        )
-        self.open_button.clicked.connect(self.open_file_dialog)
-        controls_layout.addWidget(self.open_button, 0, 0)
-
-        self.path_edit = QtWidgets.QLineEdit()
-        self.path_edit.setReadOnly(True)
-        self.path_edit.setToolTip(
-            "Absolute path of the VTU file currently loaded in the application."
-        )
-        controls_layout.addWidget(self.path_edit, 0, 1, 1, 4)
-
-        self.open_obj_button = QtWidgets.QPushButton("Open OBJ Bundle...")
-        self.open_obj_button.setIcon(
-            standard_icon(self, QtWidgets.QStyle.SP_DirOpenIcon)
-        )
-        self.open_obj_button.setToolTip(
-            "Open an existing OBJ/MTL/PNG bundle on disk and display it in the "
-            "right-hand viewport."
-        )
-        self.open_obj_button.clicked.connect(self.open_obj_bundle_dialog)
-        controls_layout.addWidget(self.open_obj_button, 0, 5)
-
-        self.export_button = QtWidgets.QPushButton("Export OBJ/MTL/PNG...")
-        self.export_button.setIcon(
-            standard_icon(self, QtWidgets.QStyle.SP_DialogSaveButton)
-        )
-        self.export_button.setToolTip(
-            "Export the currently selected field as a surface OBJ with UVs, a PNG "
-            "palette texture, and a matching MTL file."
-        )
-        self.export_button.clicked.connect(self.export_current_bundle)
-        controls_layout.addWidget(self.export_button, 0, 6)
-
-        self.reset_defaults_button = QtWidgets.QPushButton("Reset GUI Defaults")
-        self.reset_defaults_button.setIcon(
-            standard_icon(self, QtWidgets.QStyle.SP_BrowserReload)
-        )
-        self.reset_defaults_button.setToolTip(
-            "Forget persisted GUI preferences and restore the built-in default "
-            "settings for colors, view overlays, and layout."
-        )
-        self.reset_defaults_button.clicked.connect(self.reset_gui_defaults)
-        controls_layout.addWidget(self.reset_defaults_button, 0, 7)
-
-        self.field_combo = QtWidgets.QComboBox()
-        self.field_combo.setToolTip(
-            "Choose the scalar array used to color the volume view and to drive "
-            "the exported texture coordinates."
-        )
-        self.field_combo.currentIndexChanged.connect(self._handle_field_changed)
-        field_label = QtWidgets.QLabel("Field")
-        field_label.setToolTip(self.field_combo.toolTip())
-        controls_layout.addWidget(field_label, 1, 0)
-        controls_layout.addWidget(self.field_combo, 1, 1)
-
-        self.colormap_combo = QtWidgets.QComboBox()
-        for name in list_colormap_names():
-            self.colormap_combo.addItem(name)
-        self.colormap_combo.setToolTip(
-            "Choose the discrete colormap used for scalar coloring and palette "
-            "texture generation."
-        )
-        self.colormap_combo.currentIndexChanged.connect(self.refresh_preview)
-        colormap_label = QtWidgets.QLabel("Colormap")
-        colormap_label.setToolTip(self.colormap_combo.toolTip())
-        controls_layout.addWidget(colormap_label, 1, 2)
-        controls_layout.addWidget(self.colormap_combo, 1, 3)
-
-        self.n_colors_spin = QtWidgets.QSpinBox()
-        self.n_colors_spin.setRange(2, 4096)
-        self.n_colors_spin.setValue(256)
-        self.n_colors_spin.setToolTip(
-            "Number of discrete palette bins used for the colormap, the UV "
-            "quantization, and the exported PNG texture."
-        )
-        n_colors_label = QtWidgets.QLabel("Color bins")
-        n_colors_label.setToolTip(self.n_colors_spin.toolTip())
-        controls_layout.addWidget(n_colors_label, 1, 4)
-        controls_layout.addWidget(self.n_colors_spin, 1, 5)
-
-        self.normals_checkbox = QtWidgets.QCheckBox("Generate normals")
-        self.normals_checkbox.setChecked(True)
-        self.normals_checkbox.setToolTip(
-            "Generate and export point normals on the surface mesh so downstream "
-            "tools can shade the OBJ more smoothly."
-        )
-        controls_layout.addWidget(self.normals_checkbox, 1, 6)
-
-        self.vmin_spin = QtWidgets.QDoubleSpinBox()
-        self.vmax_spin = QtWidgets.QDoubleSpinBox()
-        for spin_box in (self.vmin_spin, self.vmax_spin):
-            spin_box.setDecimals(6)
-            spin_box.setRange(-1.0e30, 1.0e30)
-            spin_box.setSingleStep(0.1)
-        self.vmin_spin.setToolTip(
-            "Lower bound of the scalar range mapped to the colormap and texture. "
-            "Values below this limit are clamped."
-        )
-        self.vmax_spin.setToolTip(
-            "Upper bound of the scalar range mapped to the colormap and texture. "
-            "Values above this limit are clamped."
-        )
-        vmin_label = QtWidgets.QLabel("vmin")
-        vmin_label.setToolTip(self.vmin_spin.toolTip())
-        controls_layout.addWidget(vmin_label, 2, 0)
-        controls_layout.addWidget(self.vmin_spin, 2, 1)
-        vmax_label = QtWidgets.QLabel("vmax")
-        vmax_label.setToolTip(self.vmax_spin.toolTip())
-        controls_layout.addWidget(vmax_label, 2, 2)
-        controls_layout.addWidget(self.vmax_spin, 2, 3)
-
-        self.reset_range_button = QtWidgets.QPushButton("Use Data Range")
-        self.reset_range_button.setIcon(
-            standard_icon(self, QtWidgets.QStyle.SP_ArrowBack)
-        )
-        self.reset_range_button.setToolTip(
-            "Reset vmin and vmax to the actual data range of the currently "
-            "selected scalar field."
-        )
-        self.reset_range_button.clicked.connect(self.reset_current_range)
-        controls_layout.addWidget(self.reset_range_button, 2, 4)
-
-        self.refresh_button = QtWidgets.QPushButton("Refresh Volume View")
-        self.refresh_button.setIcon(
-            standard_icon(self, QtWidgets.QStyle.SP_BrowserReload)
-        )
-        self.refresh_button.setToolTip(
-            "Rebuild the left-hand volume preview using the current field, range, "
-            "and colormap settings."
-        )
-        self.refresh_button.clicked.connect(self.refresh_preview)
-        controls_layout.addWidget(self.refresh_button, 2, 5, 1, 2)
-
-        self.splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal, self)
-        self.splitter.setToolTip(
-            "Resize the two viewports to compare the original VTU volume on the "
-            "left with the exported OBJ bundle on the right."
-        )
+        left_container = QtWidgets.QWidget(self.main_splitter)
+        left_layout = QtWidgets.QVBoxLayout(left_container)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.addWidget(self._build_vtu_controls_group())
         self.volume_panel = MeshViewportPanel(
             "Volume Mesh",
             default_display_options=self.VOLUME_DEFAULTS,
             enable_vtk_view=self._enable_vtk_view,
-            parent=self.splitter,
+            parent=left_container,
         )
+        left_layout.addWidget(self.volume_panel, stretch=1)
+
+        right_container = QtWidgets.QWidget(self.main_splitter)
+        right_layout = QtWidgets.QVBoxLayout(right_container)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.addWidget(self._build_obj_controls_group())
         self.bundle_panel = MeshViewportPanel(
             "Exported Surface Bundle",
             default_display_options=self.BUNDLE_DEFAULTS,
             enable_vtk_view=self._enable_vtk_view,
-            parent=self.splitter,
+            parent=right_container,
         )
-        self.splitter.addWidget(self.volume_panel)
-        self.splitter.addWidget(self.bundle_panel)
-        self.splitter.setStretchFactor(0, 1)
-        self.splitter.setStretchFactor(1, 1)
-        layout.addWidget(self.splitter, stretch=1)
+        right_layout.addWidget(self.bundle_panel, stretch=1)
+
+        self.main_splitter.addWidget(left_container)
+        self.main_splitter.addWidget(right_container)
+        self.main_splitter.setStretchFactor(0, 1)
+        self.main_splitter.setStretchFactor(1, 1)
 
         self.statusBar().showMessage("Open a VTU file or an OBJ bundle to begin.")
 
-    def _build_menus(self) -> None:
-        """Create the application menus."""
-        menu_bar = self.menuBar()
+    def _build_actions(self) -> None:
+        """Create shared actions used by menus and buttons."""
+        self.open_vtu_action = QtWidgets.QAction(
+            standard_icon(self, QtWidgets.QStyle.SP_DialogOpenButton),
+            "Open VTU...",
+            self,
+        )
+        self.open_vtu_action.setToolTip(
+            "Open a VTU results file and populate the conversion controls."
+        )
+        self.open_vtu_action.setStatusTip(self.open_vtu_action.toolTip())
+        self.open_vtu_action.triggered.connect(self.open_file_dialog)
 
-        help_menu = menu_bar.addMenu("&Help")
-        credits_menu = menu_bar.addMenu("&Credits")
+        self.open_obj_action = QtWidgets.QAction(
+            standard_icon(self, QtWidgets.QStyle.SP_DirOpenIcon),
+            "Open OBJ Bundle...",
+            self,
+        )
+        self.open_obj_action.setToolTip(
+            "Open an existing OBJ/MTL/PNG bundle on disk and display it in the "
+            "right-hand viewport."
+        )
+        self.open_obj_action.setStatusTip(self.open_obj_action.toolTip())
+        self.open_obj_action.triggered.connect(self.open_obj_bundle_dialog)
+
+        self.export_bundle_action = QtWidgets.QAction(
+            standard_icon(self, QtWidgets.QStyle.SP_DialogSaveButton),
+            "Export OBJ/MTL/PNG...",
+            self,
+        )
+        self.export_bundle_action.setToolTip(
+            "Export the current VTU conversion settings as an OBJ/MTL/PNG bundle."
+        )
+        self.export_bundle_action.setStatusTip(self.export_bundle_action.toolTip())
+        self.export_bundle_action.triggered.connect(self.export_current_bundle)
+
+        self.reset_defaults_action = QtWidgets.QAction(
+            standard_icon(self, QtWidgets.QStyle.SP_BrowserReload),
+            "Reset GUI Defaults",
+            self,
+        )
+        self.reset_defaults_action.setToolTip(
+            "Forget persisted GUI preferences and restore the built-in default "
+            "settings."
+        )
+        self.reset_defaults_action.setStatusTip(self.reset_defaults_action.toolTip())
+        self.reset_defaults_action.triggered.connect(self.reset_gui_defaults)
 
         self.about_action = QtWidgets.QAction(
             standard_icon(self, QtWidgets.QStyle.SP_MessageBoxInformation),
@@ -281,7 +217,6 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self.about_action.setStatusTip(self.about_action.toolTip())
         self.about_action.triggered.connect(self.show_about_dialog)
-        help_menu.addAction(self.about_action)
 
         self.github_action = QtWidgets.QAction(
             standard_icon(self, QtWidgets.QStyle.SP_DirLinkIcon),
@@ -293,7 +228,6 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self.github_action.setStatusTip(self.github_action.toolTip())
         self.github_action.triggered.connect(self.open_github_repository)
-        help_menu.addAction(self.github_action)
 
         self.credits_action = QtWidgets.QAction(
             standard_icon(self, QtWidgets.QStyle.SP_FileDialogInfoView),
@@ -305,7 +239,185 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self.credits_action.setStatusTip(self.credits_action.toolTip())
         self.credits_action.triggered.connect(self.show_credits_dialog)
+
+    def _build_menus(self) -> None:
+        """Create the application menus."""
+        menu_bar = self.menuBar()
+
+        file_menu = menu_bar.addMenu("&File")
+        file_menu.addAction(self.open_vtu_action)
+        file_menu.addAction(self.open_obj_action)
+        file_menu.addSeparator()
+        file_menu.addAction(self.export_bundle_action)
+
+        settings_menu = menu_bar.addMenu("&Settings")
+        settings_menu.addAction(self.reset_defaults_action)
+
+        help_menu = menu_bar.addMenu("&Help")
+        help_menu.addAction(self.about_action)
+        help_menu.addAction(self.github_action)
+
+        credits_menu = menu_bar.addMenu("&Credits")
         credits_menu.addAction(self.credits_action)
+
+    def _build_vtu_controls_group(self) -> QtWidgets.QGroupBox:
+        """Build the left-hand VTU and conversion controls."""
+        group = QtWidgets.QGroupBox("VTU / Conversion", self)
+        group.setToolTip(
+            "Load a VTU file, choose the scalar-mapping settings, preview the "
+            "volume mesh, and export the OBJ bundle."
+        )
+        layout = QtWidgets.QGridLayout(group)
+
+        self.open_button = QtWidgets.QPushButton("Open VTU...")
+        self.open_button.setIcon(self.open_vtu_action.icon())
+        self.open_button.setToolTip(self.open_vtu_action.toolTip())
+        self.open_button.clicked.connect(self.open_file_dialog)
+        layout.addWidget(self.open_button, 0, 0)
+
+        self.vtu_path_edit = QtWidgets.QLineEdit()
+        self.vtu_path_edit.setReadOnly(True)
+        self.vtu_path_edit.setPlaceholderText("No VTU file loaded")
+        self.vtu_path_edit.setToolTip(
+            "Absolute path of the VTU file currently loaded for preview and "
+            "conversion."
+        )
+        layout.addWidget(self.vtu_path_edit, 0, 1, 1, 5)
+
+        self.field_combo = QtWidgets.QComboBox()
+        self.field_combo.setToolTip(
+            "Choose the scalar array used to color the volume view and to drive "
+            "the exported texture coordinates."
+        )
+        self.field_combo.currentIndexChanged.connect(self._handle_field_changed)
+        field_label = QtWidgets.QLabel("Field")
+        field_label.setToolTip(self.field_combo.toolTip())
+        layout.addWidget(field_label, 1, 0)
+        layout.addWidget(self.field_combo, 1, 1)
+
+        self.colormap_combo = QtWidgets.QComboBox()
+        for name in list_colormap_names():
+            self.colormap_combo.addItem(name)
+        self.colormap_combo.setToolTip(
+            "Choose the discrete colormap used for scalar coloring and palette "
+            "texture generation."
+        )
+        self.colormap_combo.currentIndexChanged.connect(self.refresh_preview)
+        colormap_label = QtWidgets.QLabel("Colormap")
+        colormap_label.setToolTip(self.colormap_combo.toolTip())
+        layout.addWidget(colormap_label, 1, 2)
+        layout.addWidget(self.colormap_combo, 1, 3)
+
+        self.n_colors_spin = QtWidgets.QSpinBox()
+        self.n_colors_spin.setRange(2, 4096)
+        self.n_colors_spin.setValue(DEFAULT_N_COLORS)
+        self.n_colors_spin.setToolTip(
+            "Number of discrete palette bins used for preview, UV quantization, "
+            "and the exported PNG texture."
+        )
+        n_colors_label = QtWidgets.QLabel("Color bins")
+        n_colors_label.setToolTip(self.n_colors_spin.toolTip())
+        layout.addWidget(n_colors_label, 1, 4)
+        layout.addWidget(self.n_colors_spin, 1, 5)
+
+        self.vmin_spin = QtWidgets.QDoubleSpinBox()
+        self.vmax_spin = QtWidgets.QDoubleSpinBox()
+        for spin_box in (self.vmin_spin, self.vmax_spin):
+            spin_box.setDecimals(DEFAULT_SPINBOX_DECIMALS)
+            spin_box.setRange(DEFAULT_SPINBOX_MIN, DEFAULT_SPINBOX_MAX)
+            spin_box.setSingleStep(DEFAULT_SPINBOX_STEP)
+        self.vmin_spin.setToolTip(
+            "Lower bound of the scalar range mapped to the colormap and texture. "
+            "Values below this limit are clamped."
+        )
+        self.vmax_spin.setToolTip(
+            "Upper bound of the scalar range mapped to the colormap and texture. "
+            "Values above this limit are clamped."
+        )
+        vmin_label = QtWidgets.QLabel("vmin")
+        vmin_label.setToolTip(self.vmin_spin.toolTip())
+        layout.addWidget(vmin_label, 2, 0)
+        layout.addWidget(self.vmin_spin, 2, 1)
+        vmax_label = QtWidgets.QLabel("vmax")
+        vmax_label.setToolTip(self.vmax_spin.toolTip())
+        layout.addWidget(vmax_label, 2, 2)
+        layout.addWidget(self.vmax_spin, 2, 3)
+
+        self.normals_checkbox = QtWidgets.QCheckBox("Generate normals")
+        self.normals_checkbox.setChecked(True)
+        self.normals_checkbox.setToolTip(
+            "Generate and export point normals on the surface mesh so downstream "
+            "tools can shade the OBJ more smoothly."
+        )
+        layout.addWidget(self.normals_checkbox, 2, 4, 1, 2)
+
+        self.reset_range_button = QtWidgets.QPushButton("Use Data Range")
+        self.reset_range_button.setIcon(
+            standard_icon(self, QtWidgets.QStyle.SP_ArrowBack)
+        )
+        self.reset_range_button.setToolTip(
+            "Reset vmin and vmax to the actual data range of the currently "
+            "selected scalar field."
+        )
+        self.reset_range_button.clicked.connect(self.reset_current_range)
+        layout.addWidget(self.reset_range_button, 3, 0, 1, 2)
+
+        self.refresh_button = QtWidgets.QPushButton("Refresh Volume View")
+        self.refresh_button.setIcon(
+            standard_icon(self, QtWidgets.QStyle.SP_BrowserReload)
+        )
+        self.refresh_button.setToolTip(
+            "Rebuild the left-hand volume preview using the current field, range, "
+            "and colormap settings."
+        )
+        self.refresh_button.clicked.connect(self.refresh_preview)
+        layout.addWidget(self.refresh_button, 3, 2, 1, 2)
+
+        self.export_button = QtWidgets.QPushButton("Export OBJ/MTL/PNG...")
+        self.export_button.setIcon(self.export_bundle_action.icon())
+        self.export_button.setToolTip(self.export_bundle_action.toolTip())
+        self.export_button.clicked.connect(self.export_current_bundle)
+        layout.addWidget(self.export_button, 3, 4, 1, 2)
+
+        return group
+
+    def _build_obj_controls_group(self) -> QtWidgets.QGroupBox:
+        """Build the right-hand OBJ bundle controls."""
+        group = QtWidgets.QGroupBox("OBJ Bundle / Comparison", self)
+        group.setToolTip(
+            "Load an exported OBJ/MTL/PNG bundle and compare it against the VTU "
+            "volume view."
+        )
+        layout = QtWidgets.QGridLayout(group)
+
+        self.open_obj_button = QtWidgets.QPushButton("Open OBJ Bundle...")
+        self.open_obj_button.setIcon(self.open_obj_action.icon())
+        self.open_obj_button.setToolTip(self.open_obj_action.toolTip())
+        self.open_obj_button.clicked.connect(self.open_obj_bundle_dialog)
+        layout.addWidget(self.open_obj_button, 0, 0)
+
+        self.obj_path_edit = QtWidgets.QLineEdit()
+        self.obj_path_edit.setReadOnly(True)
+        self.obj_path_edit.setPlaceholderText(
+            "No OBJ bundle loaded yet (export one from the left panel or open one)"
+        )
+        self.obj_path_edit.setToolTip(
+            "Absolute path of the OBJ file currently displayed in the right-hand "
+            "comparison viewport."
+        )
+        layout.addWidget(self.obj_path_edit, 0, 1)
+
+        hint_label = QtWidgets.QLabel(
+            "The right panel shows the last exported bundle or any OBJ bundle you open."
+        )
+        hint_label.setWordWrap(True)
+        hint_label.setToolTip(
+            "The OBJ viewport can be updated automatically after export from the "
+            "left panel, or manually by opening an existing bundle."
+        )
+        layout.addWidget(hint_label, 1, 0, 1, 2)
+
+        return group
 
     def _set_controls_enabled(self, enabled: bool) -> None:
         """Enable or disable controls that depend on a loaded VTU dataset."""
@@ -321,6 +433,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.export_button,
         ):
             widget.setEnabled(enabled)
+        self.export_bundle_action.setEnabled(enabled)
 
     @staticmethod
     def _setting_to_bool(value: object, default: bool) -> bool:
@@ -373,12 +486,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _restore_settings(self) -> None:
         """Restore GUI state from persistent storage."""
-        colormap = str(self._settings.value("colormap", "rainbow"))
+        colormap = str(self._settings.value("colormap", DEFAULT_COLORMAP_NAME))
         colormap_index = self.colormap_combo.findText(colormap)
         if colormap_index >= 0:
             self.colormap_combo.setCurrentIndex(colormap_index)
 
-        self.n_colors_spin.setValue(int(self._settings.value("n_colors", 256)))
+        self.n_colors_spin.setValue(int(self._settings.value("n_colors", DEFAULT_N_COLORS)))
         self.normals_checkbox.setChecked(
             self._setting_to_bool(self._settings.value("generate_normals"), True)
         )
@@ -397,11 +510,11 @@ class MainWindow(QtWidgets.QMainWindow):
         splitter_sizes = self._settings.value("splitter_sizes")
         if splitter_sizes:
             try:
-                self.splitter.setSizes([int(value) for value in splitter_sizes])
+                self.main_splitter.setSizes([int(value) for value in splitter_sizes])
             except (TypeError, ValueError):
                 pass
         else:
-            self.splitter.setSizes([1, 1])
+            self.main_splitter.setSizes(list(DEFAULT_GUI_SPLITTER_SIZES))
 
     def _save_viewport_settings(self, prefix: str, panel: MeshViewportPanel) -> None:
         """Persist one viewport display-options block."""
@@ -427,19 +540,36 @@ class MainWindow(QtWidgets.QMainWindow):
         self._settings.setValue("colormap", self.colormap_combo.currentText())
         self._settings.setValue("n_colors", self.n_colors_spin.value())
         self._settings.setValue("generate_normals", self.normals_checkbox.isChecked())
-        self._settings.setValue("splitter_sizes", self.splitter.sizes())
+        self._settings.setValue("splitter_sizes", self.main_splitter.sizes())
         self._save_viewport_settings("volume", self.volume_panel)
         self._save_viewport_settings("bundle", self.bundle_panel)
         self._settings.sync()
 
     def _apply_default_gui_settings(self) -> None:
         """Apply the built-in default settings to the current session."""
-        self.colormap_combo.setCurrentText("rainbow")
-        self.n_colors_spin.setValue(256)
+        self.colormap_combo.setCurrentText(DEFAULT_COLORMAP_NAME)
+        self.n_colors_spin.setValue(DEFAULT_N_COLORS)
         self.normals_checkbox.setChecked(True)
         self.volume_panel.set_display_options(self.VOLUME_DEFAULTS)
         self.bundle_panel.set_display_options(self.BUNDLE_DEFAULTS)
-        self.splitter.setSizes([1, 1])
+        self.main_splitter.setSizes(list(DEFAULT_GUI_SPLITTER_SIZES))
+
+    def _selected_startup_field_name(self) -> str | None:
+        """Return the best field to select for the current dataset."""
+        if self._current_summary is None:
+            return None
+
+        scalar_names = scalar_field_names(self._current_summary)
+        if not scalar_names:
+            return None
+
+        last_field = str(self._settings.value("last_field", "")).strip()
+        if last_field and last_field in scalar_names:
+            return last_field
+        return preferred_scalar_field_name(
+            self._current_summary,
+            preferred_name=DEFAULT_PREFERRED_SCALAR_FIELD_NAME,
+        )
 
     def reset_gui_defaults(self) -> None:
         """Forget persisted GUI settings and restore the built-in defaults."""
@@ -448,7 +578,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self._apply_default_gui_settings()
 
         if self.field_combo.count() > 0:
-            self.field_combo.setCurrentIndex(0)
+            preferred_name = preferred_scalar_field_name(
+                self._current_summary,
+                preferred_name=DEFAULT_PREFERRED_SCALAR_FIELD_NAME,
+            )
+            if preferred_name is not None:
+                self.field_combo.setCurrentText(preferred_name)
             self.reset_current_range()
             self.refresh_preview()
         if self._current_bundle_scene is not None:
@@ -459,7 +594,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _show_error(self, message: str) -> None:
         """Display an error dialog and mirror the message in the status bar."""
         self.statusBar().showMessage(message)
-        QtWidgets.QMessageBox.critical(self, "fossils-vtu2obj", message)
+        QtWidgets.QMessageBox.critical(self, DEFAULT_WINDOW_TITLE, message)
 
     def show_about_dialog(self) -> None:
         """Show a compact description of the application."""
@@ -471,8 +606,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     "fossils-vtu2obj converts VTU FEM results into a surface OBJ,",
                     "a PNG palette texture, and a matching MTL file.",
                     "",
-                    "The GUI lets you inspect the original VTU volume on the left",
-                    "and compare it with an exported OBJ/MTL/PNG bundle on the right.",
+                    "The left panel is dedicated to VTU inspection and conversion.",
+                    "The right panel is dedicated to OBJ bundle comparison.",
                     "",
                     f"GitHub: {self.GITHUB_URL}",
                 ]
@@ -495,23 +630,6 @@ class MainWindow(QtWidgets.QMainWindow):
     def open_github_repository(self) -> None:
         """Open the GitHub repository in the default browser."""
         QtGui.QDesktopServices.openUrl(QtCore.QUrl(self.GITHUB_URL))
-
-    def _scalar_field_names(self) -> list[str]:
-        """Return the scalar field names available on the current dataset."""
-        if self._current_summary is None:
-            return []
-
-        scalar_fields = [
-            array.name
-            for array in list_point_arrays(self._current_summary)
-            if array.is_scalar
-        ]
-        scalar_fields.extend(
-            array.name
-            for array in list_cell_arrays(self._current_summary)
-            if array.is_scalar
-        )
-        return scalar_fields
 
     def _current_field(self) -> str:
         """Return the currently selected field name."""
@@ -578,22 +696,19 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         self._current_surface = extract_surface(self._current_grid, triangulate=True)
 
-        scalar_fields = self._scalar_field_names()
-        if not scalar_fields:
+        scalar_names = scalar_field_names(self._current_summary)
+        if not scalar_names:
             raise ValueError(
                 "The selected VTU file does not contain scalar point or cell data."
             )
 
-        self.path_edit.setText(str(self.current_file_path))
+        self.vtu_path_edit.setText(str(self.current_file_path))
         self.field_combo.blockSignals(True)
         self.field_combo.clear()
-        self.field_combo.addItems(scalar_fields)
-        previous_field = str(self._settings.value("last_field", ""))
-        field_index = self.field_combo.findText(previous_field)
-        if field_index >= 0:
-            self.field_combo.setCurrentIndex(field_index)
-        elif self.field_combo.count() > 0:
-            self.field_combo.setCurrentIndex(0)
+        self.field_combo.addItems(list(scalar_names))
+        startup_field = self._selected_startup_field_name()
+        if startup_field is not None:
+            self.field_combo.setCurrentText(startup_field)
         self.field_combo.blockSignals(False)
 
         self._set_controls_enabled(True)
@@ -610,6 +725,7 @@ class MainWindow(QtWidgets.QMainWindow):
         scene = build_obj_bundle_preview_scene(bundle)
         self._current_bundle = bundle
         self._current_bundle_scene = scene
+        self.obj_path_edit.setText(str(bundle.obj_path))
         self.bundle_panel.set_scene(scene)
         self.statusBar().showMessage(f"Loaded OBJ bundle {bundle.obj_path.name}")
         self._save_settings()

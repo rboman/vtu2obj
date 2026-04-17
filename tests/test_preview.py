@@ -1,6 +1,12 @@
 import pytest
 import vtk
 
+from fossils_vtu2obj.defaults import (
+    DEFAULT_RENDERER_BACKGROUND,
+    DEFAULT_SCALAR_BAR_LABEL_FONT_SIZE,
+    DEFAULT_SCALAR_BAR_TITLE_FONT_SIZE,
+    DEFAULT_SCALAR_BAR_WIDTH,
+)
 from fossils_vtu2obj.preview import (
     PreviewScene,
     build_obj_bundle_preview_scene,
@@ -29,12 +35,16 @@ def test_build_scalar_preview_scene_returns_renderer_and_scalar_bar(
     assert scene.edge_actor is not None
     assert scene.renderer.GetActors().GetNumberOfItems() == 2
     assert scene.renderer.GetGradientBackground() == 0
-    assert scene.renderer.GetBackground() == pytest.approx(
-        (0.3199969482, 0.3400015259, 0.4299992370)
+    assert scene.renderer.GetBackground() == pytest.approx(DEFAULT_RENDERER_BACKGROUND)
+    assert scene.scalar_bar.GetWidth() == pytest.approx(DEFAULT_SCALAR_BAR_WIDTH)
+    assert (
+        scene.scalar_bar.GetTitleTextProperty().GetFontSize()
+        == DEFAULT_SCALAR_BAR_TITLE_FONT_SIZE
     )
-    assert scene.scalar_bar.GetWidth() == pytest.approx(0.07)
-    assert scene.scalar_bar.GetTitleTextProperty().GetFontSize() == 14
-    assert scene.scalar_bar.GetLabelTextProperty().GetFontSize() == 11
+    assert (
+        scene.scalar_bar.GetLabelTextProperty().GetFontSize()
+        == DEFAULT_SCALAR_BAR_LABEL_FONT_SIZE
+    )
 
 
 def test_build_textured_preview_scene_adds_texture_to_actor(

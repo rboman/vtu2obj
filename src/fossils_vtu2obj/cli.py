@@ -10,6 +10,7 @@ import typer
 from . import __version__
 from .arrays import find_array, list_cell_arrays, list_point_arrays, require_array
 from .colormaps import require_colormap_name
+from .defaults import DEFAULT_COLORMAP_NAME, DEFAULT_N_COLORS
 from .export_obj import export_obj_bundle
 from .gui.app import launch_gui
 from .integrations.fossils import detect_native_bridge
@@ -235,10 +236,10 @@ def list_arrays_command(input_path: InputPathArgument) -> None:
 def preview_command(
     input_path: PreviewInputPathArgument,
     field: FieldOption,
-    colormap: ColormapOption = "rainbow",
+    colormap: ColormapOption = DEFAULT_COLORMAP_NAME,
     vmin: VMinOption = None,
     vmax: VMaxOption = None,
-    n_colors: NColorsOption = 256,
+    n_colors: NColorsOption = DEFAULT_N_COLORS,
     textured: TexturedPreviewOption = False,
 ) -> None:
     """Preview a scalar field or textured surface."""
@@ -272,10 +273,10 @@ def convert_command(
     input_path: ConvertInputPathArgument,
     output_prefix: OutputPrefixArgument,
     field: FieldOption,
-    colormap: ColormapOption = "rainbow",
+    colormap: ColormapOption = DEFAULT_COLORMAP_NAME,
     vmin: VMinOption = None,
     vmax: VMaxOption = None,
-    n_colors: NColorsOption = 256,
+    n_colors: NColorsOption = DEFAULT_N_COLORS,
     normals: NormalsOption = True,
 ) -> None:
     """Convert a VTU dataset into OBJ, MTL, and PNG outputs."""

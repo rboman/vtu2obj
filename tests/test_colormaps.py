@@ -38,3 +38,28 @@ def test_table_value_to_uint8_reads_lookup_table_colors() -> None:
     lookup_table = build_lookup_table("grayscale", n_colors=2)
 
     assert table_value_to_uint8(lookup_table, 0) == (0, 0, 0)
+
+
+def test_extended_scientific_colormap_names_are_available() -> None:
+    for name in (
+        "plasma_like",
+        "magma_like",
+        "inferno_like",
+        "turbo_like",
+        "blue_to_red",
+        "black_body",
+    ):
+        assert name in BUILTIN_COLORMAPS
+
+
+def test_extended_colormaps_can_be_sampled() -> None:
+    for name in (
+        "plasma_like",
+        "magma_like",
+        "inferno_like",
+        "turbo_like",
+        "blue_to_red",
+        "black_body",
+    ):
+        palette = sample_colormap(name, n_colors=4)
+        assert len(palette) == 4

@@ -10,6 +10,7 @@ import vtk
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
+EXAMPLES = ROOT / "examples"
 
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
@@ -101,3 +102,12 @@ def sample_obj_bundle(
         tmp_path / "bundle" / "model",
         texture_image,
     )
+
+
+@pytest.fixture(scope="session")
+def doli_vtu_path() -> Path:
+    """Return the repository example VTU used for smoke integration tests."""
+    path = EXAMPLES / "doli.vtu"
+    if not path.is_file():
+        pytest.skip("examples/doli.vtu is not available in this checkout.")
+    return path

@@ -7,9 +7,13 @@ from pathlib import Path
 import vtk
 
 from .colormaps import require_colormap_name, sample_colormap
+from .defaults import DEFAULT_N_COLORS, DEFAULT_TEXTURE_HEIGHT
 
 
-def validate_texture_shape(n_colors: int, height: int = 16) -> tuple[int, int]:
+def validate_texture_shape(
+    n_colors: int,
+    height: int = DEFAULT_TEXTURE_HEIGHT,
+) -> tuple[int, int]:
     """Validate and return texture dimensions for a palette image."""
     if n_colors <= 1:
         raise ValueError("n_colors must be greater than 1.")
@@ -20,8 +24,8 @@ def validate_texture_shape(n_colors: int, height: int = 16) -> tuple[int, int]:
 
 def build_palette_texture(
     colormap: str,
-    n_colors: int = 256,
-    height: int = 16,
+    n_colors: int = DEFAULT_N_COLORS,
+    height: int = DEFAULT_TEXTURE_HEIGHT,
 ) -> vtk.vtkImageData:
     """Build a VTK image containing the discrete palette texture."""
     require_colormap_name(colormap)

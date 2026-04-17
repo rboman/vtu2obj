@@ -1,6 +1,12 @@
 from pathlib import Path
 
-from fossils_vtu2obj.arrays import array_names, find_array, require_array
+from fossils_vtu2obj.arrays import (
+    array_names,
+    find_array,
+    preferred_scalar_field_name,
+    require_array,
+    scalar_field_names,
+)
 from fossils_vtu2obj.io_vtk import inspect_dataset
 from fossils_vtu2obj.model import ArrayInfo, DatasetSummary
 
@@ -48,3 +54,37 @@ def test_inspect_dataset_discovers_point_and_cell_arrays(sample_vtu_path: Path) 
 
     displacement = require_array(summary, "displacement")
     assert displacement.is_vector
+
+
+def test_scalar_field_helpers_prefer_stress_von_mises(sample_vtu_path: Path) -> None:
+    summary = inspect_dataset(sample_vtu_path)
+
+    assert scalar_field_names(summary) == (
+        "stress_von_mises",
+        "cell_stress_von_mises",
+    )
+    assert preferred_scalar_field_name(summary) == "stress_von_mises"
+
+
+def test_preferred_scalar_field_name_falls_back_to_first_scalar() -> None:
+    summary = DatasetSummary(
+        source_path=Path("sample.vtu"),
+        n_points=2,
+        n_cells=0,
+        point_arrays=(
+            ArrayInfo(
+                name="temperature",
+                association="point",
+                components=1,
+                tuples=2,
+            ),
+            ArrayInfo(
+                name="displacement",
+                association="point",
+                components=3,
+                tuples=2,
+            ),
+        ),
+    )
+
+    assert preferred_scalar_field_name(summary) == "temperature"
