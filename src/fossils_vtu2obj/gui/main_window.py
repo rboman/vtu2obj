@@ -123,6 +123,22 @@ class MainWindow(QtWidgets.QMainWindow):
         central_widget = QtWidgets.QWidget(self)
         self.setCentralWidget(central_widget)
         root_layout = QtWidgets.QVBoxLayout(central_widget)
+        root_layout.setContentsMargins(8, 8, 8, 8)
+        root_layout.setSpacing(8)
+
+        controls_layout = QtWidgets.QGridLayout()
+        controls_layout.setContentsMargins(0, 0, 0, 0)
+        controls_layout.setHorizontalSpacing(8)
+        controls_layout.setVerticalSpacing(8)
+        root_layout.addLayout(controls_layout, stretch=0)
+
+        self.vtu_controls_group = self._build_vtu_controls_group()
+        self.obj_controls_group = self._build_obj_controls_group()
+        controls_layout.addWidget(self.vtu_controls_group, 0, 0)
+        controls_layout.addWidget(self.obj_controls_group, 0, 1)
+        controls_layout.setColumnStretch(0, 1)
+        controls_layout.setColumnStretch(1, 1)
+        controls_layout.setRowStretch(0, 0)
 
         self.main_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal, self)
         self.main_splitter.setToolTip(
@@ -131,32 +147,20 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         root_layout.addWidget(self.main_splitter, stretch=1)
 
-        left_container = QtWidgets.QWidget(self.main_splitter)
-        left_layout = QtWidgets.QVBoxLayout(left_container)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.addWidget(self._build_vtu_controls_group())
         self.volume_panel = MeshViewportPanel(
             "Volume Mesh",
             default_display_options=self.VOLUME_DEFAULTS,
             enable_vtk_view=self._enable_vtk_view,
-            parent=left_container,
+            parent=self.main_splitter,
         )
-        left_layout.addWidget(self.volume_panel, stretch=1)
-
-        right_container = QtWidgets.QWidget(self.main_splitter)
-        right_layout = QtWidgets.QVBoxLayout(right_container)
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.addWidget(self._build_obj_controls_group())
         self.bundle_panel = MeshViewportPanel(
             "Exported Surface Bundle",
             default_display_options=self.BUNDLE_DEFAULTS,
             enable_vtk_view=self._enable_vtk_view,
-            parent=right_container,
+            parent=self.main_splitter,
         )
-        right_layout.addWidget(self.bundle_panel, stretch=1)
-
-        self.main_splitter.addWidget(left_container)
-        self.main_splitter.addWidget(right_container)
+        self.main_splitter.addWidget(self.volume_panel)
+        self.main_splitter.addWidget(self.bundle_panel)
         self.main_splitter.setStretchFactor(0, 1)
         self.main_splitter.setStretchFactor(1, 1)
 
@@ -586,6 +590,58 @@ class MainWindow(QtWidgets.QMainWindow):
             preferred_name=DEFAULT_PREFERRED_SCALAR_FIELD_NAME,
         )
 
+    def _last_directory(self, key: str, fallback: Path | None = None) -> str:
+        """Return one remembered directory for a file dialog."""
+        stored_value = str(self._settings.value(key, "")).strip()
+        if stored_value:
+            stored_path = Path(stored_value).expanduser()
+            if stored_path.exists() and stored_path.is_dir():
+                return str(stored_path)
+
+        if fallback is not None:
+            fallback_path = fallback.expanduser()
+            if fallback_path.is_file():
+                fallback_path = fallback_path.parent
+            if fallback_path.exists():
+                return str(fallback_path.resolve(strict=False))
+
+        return ""
+
+    def _remember_directory(self, key: str, path: str | Path) -> None:
+        """Persist the parent directory of one selected file path."""
+        selected_path = Path(path).expanduser()
+        directory = selected_path.parent if selected_path.suffix else selected_path
+        self._settings.setValue(key, str(directory.resolve(strict=False)))
+
+    def _create_progress_dialog(
+        self,
+        label_text: str,
+        maximum: int,
+    ) -> QtWidgets.QProgressDialog:
+        """Create a modal progress dialog for one long-running GUI operation."""
+        dialog = QtWidgets.QProgressDialog(label_text, "", 0, maximum, self)
+        dialog.setWindowTitle(DEFAULT_WINDOW_TITLE)
+        dialog.setWindowModality(QtCore.Qt.WindowModal)
+        dialog.setMinimumDuration(0)
+        dialog.setCancelButton(None)
+        dialog.setAutoClose(False)
+        dialog.setAutoReset(False)
+        dialog.setValue(0)
+        dialog.show()
+        QtWidgets.QApplication.processEvents()
+        return dialog
+
+    @staticmethod
+    def _update_progress(
+        dialog: QtWidgets.QProgressDialog,
+        value: int,
+        label_text: str,
+    ) -> None:
+        """Advance one progress dialog and flush pending UI repaints."""
+        dialog.setLabelText(label_text)
+        dialog.setValue(value)
+        QtWidgets.QApplication.processEvents()
+
     def reset_gui_defaults(self) -> None:
         """Forget persisted GUI settings and restore the built-in defaults."""
         self._settings.clear()
@@ -675,7 +731,7 @@ class MainWindow(QtWidgets.QMainWindow):
         file_name, _ = QtWidgets.QFileDialog.getOpenFileName(
             self,
             "Open VTU file",
-            "",
+            self._last_directory("last_vtu_directory", self.current_file_path),
             "VTU Files (*.vtu);;All Files (*)",
         )
         if not file_name:
@@ -690,7 +746,12 @@ class MainWindow(QtWidgets.QMainWindow):
         file_name, _ = QtWidgets.QFileDialog.getOpenFileName(
             self,
             "Open OBJ bundle",
-            "",
+            self._last_directory(
+                "last_obj_bundle_directory",
+                self._current_bundle.obj_path
+                if self._current_bundle is not None
+                else None,
+            ),
             "OBJ Files (*.obj);;All Files (*)",
         )
         if not file_name:
@@ -700,52 +761,115 @@ class MainWindow(QtWidgets.QMainWindow):
         except (FileNotFoundError, TypeError, ValueError, RuntimeError) as exc:
             self._show_error(str(exc))
 
-    def load_file(self, path: str | Path, *, refresh: bool = True) -> None:
+    def load_file(
+        self,
+        path: str | Path,
+        *,
+        refresh: bool = True,
+        show_progress: bool = True,
+    ) -> None:
         """Load a VTU file, populate controls, and optionally refresh the view."""
-        input_path = Path(path).expanduser()
-        self.current_file_path = input_path.resolve(strict=False)
-        self._current_grid = load_unstructured_grid(self.current_file_path)
-        self._current_summary = summarize_unstructured_grid(
-            self._current_grid,
-            self.current_file_path,
-        )
-        self._current_surface = extract_surface(
-            self._current_grid, triangulate=True)
-
-        scalar_names = scalar_field_names(self._current_summary)
-        if not scalar_names:
-            raise ValueError(
-                "The selected VTU file does not contain scalar point or cell data."
+        progress = (
+            self._create_progress_dialog(
+                "Loading VTU file...",
+                4 if refresh else 3,
             )
+            if show_progress
+            else None
+        )
 
-        self.vtu_path_edit.setText(str(self.current_file_path))
-        self.field_combo.blockSignals(True)
-        self.field_combo.clear()
-        self.field_combo.addItems(list(scalar_names))
-        startup_field = self._selected_startup_field_name()
-        if startup_field is not None:
-            self.field_combo.setCurrentText(startup_field)
-        self.field_combo.blockSignals(False)
+        input_path = Path(path).expanduser()
+        try:
+            self.current_file_path = input_path.resolve(strict=False)
+            if progress is not None:
+                self._update_progress(progress, 0, "Reading VTU file...")
 
-        self._set_controls_enabled(True)
-        self.reset_current_range()
-        self.statusBar().showMessage(f"Loaded {self.current_file_path.name}")
-        self._save_settings()
+            self._current_grid = load_unstructured_grid(self.current_file_path)
+            if progress is not None:
+                self._update_progress(progress, 1, "Inspecting dataset arrays...")
 
-        if refresh:
-            self.refresh_preview()
+            self._current_summary = summarize_unstructured_grid(
+                self._current_grid,
+                self.current_file_path,
+            )
+            if progress is not None:
+                self._update_progress(progress, 2, "Extracting surface mesh...")
 
-    def load_obj_bundle(self, path: str | Path) -> None:
+            self._current_surface = extract_surface(
+                self._current_grid, triangulate=True)
+
+            scalar_names = scalar_field_names(self._current_summary)
+            if not scalar_names:
+                raise ValueError(
+                    "The selected VTU file does not contain scalar point or cell data."
+                )
+
+            self.vtu_path_edit.setText(str(self.current_file_path))
+            self.field_combo.blockSignals(True)
+            self.field_combo.clear()
+            self.field_combo.addItems(list(scalar_names))
+            startup_field = self._selected_startup_field_name()
+            if startup_field is not None:
+                self.field_combo.setCurrentText(startup_field)
+            self.field_combo.blockSignals(False)
+
+            self._set_controls_enabled(True)
+            self.reset_current_range()
+            self._remember_directory("last_vtu_directory", self.current_file_path)
+            self.statusBar().showMessage(f"Loaded {self.current_file_path.name}")
+            self._save_settings()
+
+            if refresh:
+                if progress is not None:
+                    self._update_progress(progress, 3, "Building volume preview...")
+                self.refresh_preview()
+
+            if progress is not None:
+                self._update_progress(
+                    progress,
+                    progress.maximum(),
+                    "VTU file loaded.",
+                )
+        finally:
+            if progress is not None:
+                progress.close()
+
+    def load_obj_bundle(
+        self,
+        path: str | Path,
+        *,
+        show_progress: bool = True,
+    ) -> None:
         """Load an OBJ/MTL/PNG bundle into the right viewport."""
-        bundle = resolve_obj_bundle_paths(path)
-        scene = build_obj_bundle_preview_scene(bundle)
-        self._current_bundle = bundle
-        self._current_bundle_scene = scene
-        self.obj_path_edit.setText(str(bundle.obj_path))
-        self.bundle_panel.set_scene(scene)
-        self.statusBar().showMessage(
-            f"Loaded OBJ bundle {bundle.obj_path.name}")
-        self._save_settings()
+        progress = (
+            self._create_progress_dialog("Loading OBJ bundle...", 2)
+            if show_progress
+            else None
+        )
+        try:
+            if progress is not None:
+                self._update_progress(
+                    progress,
+                    0,
+                    "Resolving OBJ, MTL, and texture files...",
+                )
+            bundle = resolve_obj_bundle_paths(path)
+            if progress is not None:
+                self._update_progress(progress, 1, "Building textured OBJ preview...")
+            scene = build_obj_bundle_preview_scene(bundle)
+            self._current_bundle = bundle
+            self._current_bundle_scene = scene
+            self.obj_path_edit.setText(str(bundle.obj_path))
+            self.bundle_panel.set_scene(scene)
+            self._remember_directory("last_obj_bundle_directory", bundle.obj_path)
+            self.statusBar().showMessage(
+                f"Loaded OBJ bundle {bundle.obj_path.name}")
+            self._save_settings()
+            if progress is not None:
+                self._update_progress(progress, 2, "OBJ bundle loaded.")
+        finally:
+            if progress is not None:
+                progress.close()
 
     def _handle_field_changed(self) -> None:
         """Synchronize the range with the selected field and update the volume view."""
@@ -769,6 +893,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return
 
         try:
+            camera_state = self.volume_panel.camera_state()
             scene = build_volume_preview_scene(
                 self._current_grid,
                 self._current_field(),
@@ -776,7 +901,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 **self._current_mapping_kwargs(),
             )
             self._current_volume_scene = scene
-            self.volume_panel.set_scene(scene)
+            self.volume_panel.set_scene(
+                scene,
+                preserve_camera_state=camera_state,
+            )
             self.statusBar().showMessage(
                 f"Volume view updated for field '{self._current_field()}'."
             )
@@ -790,16 +918,27 @@ class MainWindow(QtWidgets.QMainWindow):
             raise RuntimeError("No VTU file is currently loaded.")
 
         suggested_name = self.current_file_path.with_suffix(".obj").name
+        initial_directory = self._last_directory(
+            "last_export_directory",
+            self.current_file_path,
+        )
+        initial_path = (
+            str(Path(initial_directory) / suggested_name)
+            if initial_directory
+            else suggested_name
+        )
         file_name, _ = QtWidgets.QFileDialog.getSaveFileName(
             self,
             "Export OBJ bundle",
-            suggested_name,
+            initial_path,
             "OBJ Files (*.obj);;All Files (*)",
         )
         if not file_name:
             return
 
+        progress = self._create_progress_dialog("Exporting OBJ bundle...", 5)
         try:
+            self._update_progress(progress, 0, "Generating scalar UV coordinates...")
             output_prefix = Path(file_name).with_suffix("")
             mapping_kwargs = self._current_mapping_kwargs()
             textured_surface = apply_scalar_uv_map(
@@ -809,18 +948,26 @@ class MainWindow(QtWidgets.QMainWindow):
                 vmax=float(mapping_kwargs["vmax"]),
                 n_colors=int(mapping_kwargs["n_colors"]),
             )
+            self._update_progress(progress, 1, "Building palette texture PNG...")
             texture_image = build_palette_texture(
                 str(mapping_kwargs["colormap"]),
                 n_colors=int(mapping_kwargs["n_colors"]),
             )
+            self._update_progress(progress, 2, "Preparing surface for OBJ export...")
             if self.normals_checkbox.isChecked():
                 textured_surface = generate_surface_normals(textured_surface)
+            self._update_progress(progress, 3, "Writing OBJ, MTL, and PNG files...")
             bundle = export_obj_bundle(
                 textured_surface, output_prefix, texture_image)
-            self.load_obj_bundle(bundle.obj_path)
+            self._update_progress(progress, 4, "Reloading exported OBJ bundle...")
+            self.load_obj_bundle(bundle.obj_path, show_progress=False)
+            self._remember_directory("last_export_directory", bundle.obj_path)
+            self._update_progress(progress, 5, "Export complete.")
         except (TypeError, ValueError, RuntimeError, FileNotFoundError) as exc:
             self._show_error(str(exc))
             return
+        finally:
+            progress.close()
 
         self.statusBar().showMessage(
             f"Exported bundle to {bundle.obj_path.parent}")

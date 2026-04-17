@@ -9,9 +9,11 @@ pytest.importorskip("PyQt5")
 
 from PyQt5 import QtCore, QtWidgets
 
+import fossils_vtu2obj.gui.main_window as main_window_module
 from fossils_vtu2obj.defaults import DEFAULT_N_COLORS
 from fossils_vtu2obj.gui.main_window import MainWindow
 from fossils_vtu2obj.model import ViewDisplayOptions
+from fossils_vtu2obj.preview import PreviewScene
 
 
 @pytest.fixture(scope="module")
@@ -228,3 +230,169 @@ def test_main_window_prefers_stress_von_mises_on_doli(
     window.load_file(doli_vtu_path, refresh=False)
 
     assert window.field_combo.currentText() == "stress_von_mises"
+
+
+def test_main_window_remembers_last_dialog_directories(
+    qapplication: QtWidgets.QApplication,
+    sample_vtu_path: Path,
+    sample_obj_bundle,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = qapplication
+    settings = QtCore.QSettings(
+        str(tmp_path / "gui_settings_dialogs.ini"),
+        QtCore.QSettings.IniFormat,
+    )
+    window = MainWindow(enable_vtk_view=False, settings=settings)
+    window.load_file(sample_vtu_path, refresh=False)
+
+    chosen_vtu = tmp_path / "imports" / "mesh.vtu"
+    chosen_obj = tmp_path / "bundles" / "model.obj"
+    chosen_export = tmp_path / "exports" / "out.obj"
+    chosen_vtu.parent.mkdir(parents=True, exist_ok=True)
+    chosen_obj.parent.mkdir(parents=True, exist_ok=True)
+    chosen_export.parent.mkdir(parents=True, exist_ok=True)
+
+    captured_vtu_dirs: list[str] = []
+    captured_obj_dirs: list[str] = []
+    captured_export_paths: list[str] = []
+
+    def fake_get_open_file_name(parent, title, directory, file_filter):
+        if title == "Open VTU file":
+            captured_vtu_dirs.append(directory)
+            return str(chosen_vtu), file_filter
+        captured_obj_dirs.append(directory)
+        return str(chosen_obj), file_filter
+
+    def fake_get_save_file_name(parent, title, directory, file_filter):
+        captured_export_paths.append(directory)
+        return str(chosen_export), file_filter
+
+    monkeypatch.setattr(
+        window,
+        "load_file",
+        lambda path, **kwargs: window._remember_directory("last_vtu_directory", path),
+    )
+    monkeypatch.setattr(
+        window,
+        "load_obj_bundle",
+        lambda path, **kwargs: window._remember_directory(
+            "last_obj_bundle_directory",
+            path,
+        ),
+    )
+    window._current_bundle = sample_obj_bundle
+    monkeypatch.setattr(
+        QtWidgets.QFileDialog,
+        "getOpenFileName",
+        fake_get_open_file_name,
+    )
+    monkeypatch.setattr(
+        QtWidgets.QFileDialog,
+        "getSaveFileName",
+        fake_get_save_file_name,
+    )
+    monkeypatch.setattr(QtWidgets.QMessageBox, "information", lambda *args, **kwargs: 0)
+
+    window.open_file_dialog()
+    window.open_obj_bundle_dialog()
+    window.export_current_bundle()
+
+    assert settings.value("last_vtu_directory") == str(
+        chosen_vtu.parent.resolve(strict=False)
+    )
+    assert settings.value("last_obj_bundle_directory") == str(
+        chosen_export.parent.resolve(strict=False)
+    )
+    assert settings.value("last_export_directory") == str(
+        chosen_export.parent.resolve(strict=False)
+    )
+    assert captured_vtu_dirs == [
+        str(sample_vtu_path.parent.resolve(strict=False))
+    ]
+    assert captured_obj_dirs == [
+        str(sample_obj_bundle.obj_path.parent.resolve(strict=False))
+    ]
+    assert captured_export_paths == [
+        str(
+            (
+                sample_vtu_path.parent / sample_vtu_path.with_suffix(".obj").name
+            ).resolve(strict=False)
+        )
+    ]
+
+
+def test_refresh_preview_preserves_camera_state(
+    qapplication: QtWidgets.QApplication,
+    sample_vtu_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = qapplication
+    window = MainWindow(enable_vtk_view=False)
+    window.load_file(sample_vtu_path, refresh=False, show_progress=False)
+
+    preserved_state = {"position": (1.0, 2.0, 3.0)}
+    captured: dict[str, object] = {}
+    fake_scene = PreviewScene(
+        renderer=object(),  # type: ignore[arg-type]
+        actor=object(),  # type: ignore[arg-type]
+        surface=object(),  # type: ignore[arg-type]
+    )
+
+    monkeypatch.setattr(window.volume_panel, "camera_state", lambda: preserved_state)
+    monkeypatch.setattr(
+        main_window_module,
+        "build_volume_preview_scene",
+        lambda *args, **kwargs: fake_scene,
+    )
+    monkeypatch.setattr(
+        window.volume_panel,
+        "set_scene",
+        lambda scene, preserve_camera_state=None: captured.update(
+            scene=scene,
+            preserve_camera_state=preserve_camera_state,
+        ),
+    )
+
+    window.refresh_preview()
+
+    assert captured["scene"] is fake_scene
+    assert captured["preserve_camera_state"] == preserved_state
+
+
+def test_load_file_uses_progress_dialog_for_long_operation(
+    qapplication: QtWidgets.QApplication,
+    sample_vtu_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = qapplication
+    window = MainWindow(enable_vtk_view=False)
+    progress_calls: list[tuple[str, int]] = []
+
+    class FakeProgressDialog:
+        def __init__(self) -> None:
+            self._maximum = 4
+
+        def maximum(self) -> int:
+            return self._maximum
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(
+        window,
+        "_create_progress_dialog",
+        lambda label_text, maximum: (
+            progress_calls.append((label_text, maximum)) or FakeProgressDialog()
+        ),
+    )
+    monkeypatch.setattr(
+        window,
+        "_update_progress",
+        lambda dialog, value, label_text: None,
+    )
+
+    window.load_file(sample_vtu_path, refresh=True, show_progress=True)
+
+    assert progress_calls == [("Loading VTU file...", 4)]

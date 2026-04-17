@@ -47,18 +47,42 @@ class VtkView(QVTKRenderWindowInteractor):
         """Return the active display options."""
         return self._display_options
 
+    def camera_state(self) -> dict[str, object] | None:
+        """Capture the current camera state for later restoration."""
+        if self._scene is None:
+            return None
+
+        camera = self._renderer.GetActiveCamera()
+        return {
+            "position": tuple(camera.GetPosition()),
+            "focal_point": tuple(camera.GetFocalPoint()),
+            "view_up": tuple(camera.GetViewUp()),
+            "clipping_range": tuple(camera.GetClippingRange()),
+            "parallel_scale": float(camera.GetParallelScale()),
+            "view_angle": float(camera.GetViewAngle()),
+            "parallel_projection": bool(camera.GetParallelProjection()),
+        }
+
     def set_display_options(self, options: ViewDisplayOptions) -> None:
         """Update the view overlays without rebuilding the whole scene."""
         self._display_options = options
         self._apply_display_options()
 
-    def set_scene(self, scene: PreviewScene) -> None:
+    def set_scene(
+        self,
+        scene: PreviewScene,
+        *,
+        preserve_camera_state: dict[str, object] | None = None,
+    ) -> None:
         """Replace the currently displayed preview scene."""
         render_window = self.GetRenderWindow()
         render_window.GetRenderers().RemoveAllItems()
         render_window.AddRenderer(scene.renderer)
         self._renderer = scene.renderer
         self._scene = scene
+
+        if preserve_camera_state is not None:
+            self._restore_camera_state(preserve_camera_state)
 
         if self._interactor is not None:
             self._interactor.SetInteractorStyle(vtk.vtkInteractorStyleTrackballCamera())
@@ -160,3 +184,18 @@ class VtkView(QVTKRenderWindowInteractor):
         render_window = self.GetRenderWindow()
         if render_window is not None:
             render_window.Render()
+
+    def _restore_camera_state(self, state: dict[str, object]) -> None:
+        """Apply one previously captured camera state to the current renderer."""
+        camera = self._renderer.GetActiveCamera()
+        camera.SetPosition(*state["position"])
+        camera.SetFocalPoint(*state["focal_point"])
+        camera.SetViewUp(*state["view_up"])
+        camera.SetClippingRange(*state["clipping_range"])
+        camera.SetParallelScale(float(state["parallel_scale"]))
+        camera.SetViewAngle(float(state["view_angle"]))
+        if bool(state["parallel_projection"]):
+            camera.ParallelProjectionOn()
+        else:
+            camera.ParallelProjectionOff()
+        camera.OrthogonalizeViewUp()

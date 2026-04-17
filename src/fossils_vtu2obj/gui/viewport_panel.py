@@ -145,11 +145,25 @@ class MeshViewportPanel(QtWidgets.QWidget):
         self._refresh_edge_color_button()
         self._apply_display_options()
 
-    def set_scene(self, scene: PreviewScene) -> None:
+    def camera_state(self) -> dict[str, object] | None:
+        """Return the current camera state when the VTK view is active."""
+        if self.vtk_view is None:
+            return None
+        return self.vtk_view.camera_state()
+
+    def set_scene(
+        self,
+        scene: PreviewScene,
+        *,
+        preserve_camera_state: dict[str, object] | None = None,
+    ) -> None:
         """Display a new preview scene in the panel."""
         self._scene = scene
         if self.vtk_view is not None:
-            self.vtk_view.set_scene(scene)
+            self.vtk_view.set_scene(
+                scene,
+                preserve_camera_state=preserve_camera_state,
+            )
         self.set_info(scene.info)
 
     def clear_scene(self) -> None:
