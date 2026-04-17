@@ -6,7 +6,7 @@ from pathlib import Path
 
 import vtk
 
-from .model import ExportBundle
+from .model import ExportBundle, ObjBundlePaths
 from .texture import write_palette_texture
 
 
@@ -23,6 +23,66 @@ def expected_export_bundle(output_prefix: str | Path) -> ExportBundle:
 def _write_mtl_fallback(path: Path, texture_name: str) -> None:
     """Write a minimal MTL file when VTK does not create one."""
     path.write_text(f"newmtl model\nmap_Kd {texture_name}\n", encoding="utf-8")
+
+
+def _read_first_directive_value(path: Path, directive: str) -> str | None:
+    """Return the first raw value associated with a text directive."""
+    for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+        stripped = line.split("#", 1)[0].strip()
+        if not stripped or not stripped.startswith(f"{directive} "):
+            continue
+        value = stripped[len(directive) :].strip()
+        if value:
+            return value
+    return None
+
+
+def read_obj_mtllib_reference(obj_path: str | Path) -> str | None:
+    """Return the first MTL reference declared by an OBJ file, when present."""
+    path = Path(obj_path)
+    return _read_first_directive_value(path, "mtllib")
+
+
+def read_mtl_diffuse_texture_reference(mtl_path: str | Path) -> str | None:
+    """Return the first diffuse texture reference declared by an MTL file."""
+    path = Path(mtl_path)
+    return _read_first_directive_value(path, "map_Kd")
+
+
+def resolve_obj_bundle_paths(obj_path: str | Path) -> ObjBundlePaths:
+    """Resolve the MTL and texture paths associated with an OBJ file."""
+    normalized_obj = Path(obj_path).expanduser().resolve(strict=False)
+    if not normalized_obj.is_file():
+        raise FileNotFoundError(f"OBJ file not found: {normalized_obj}")
+
+    mtl_candidates: list[Path] = []
+    mtllib_reference = read_obj_mtllib_reference(normalized_obj)
+    if mtllib_reference:
+        mtl_candidates.append(
+            (normalized_obj.parent / mtllib_reference).resolve(strict=False)
+        )
+
+    default_mtl = normalized_obj.with_suffix(".mtl")
+    if default_mtl not in mtl_candidates:
+        mtl_candidates.append(default_mtl)
+
+    resolved_mtl = next((path for path in mtl_candidates if path.is_file()), None)
+
+    resolved_texture: Path | None = None
+    if resolved_mtl is not None:
+        texture_reference = read_mtl_diffuse_texture_reference(resolved_mtl)
+        if texture_reference:
+            texture_candidate = (resolved_mtl.parent / texture_reference).resolve(
+                strict=False
+            )
+            if texture_candidate.is_file():
+                resolved_texture = texture_candidate
+
+    return ObjBundlePaths(
+        obj_path=normalized_obj,
+        mtl_path=resolved_mtl,
+        texture_path=resolved_texture,
+    )
 
 
 def export_obj_bundle(

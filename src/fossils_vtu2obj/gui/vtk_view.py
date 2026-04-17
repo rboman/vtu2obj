@@ -1,29 +1,59 @@
-"""VTK widget placeholder for the future GUI."""
+"""Embedded VTK view used by the Qt GUI."""
 
 from __future__ import annotations
 
 import vtk
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 
+from ..model import ViewDisplayOptions
 from ..preview import PreviewScene
 
 
 class VtkView(QVTKRenderWindowInteractor):
-    """Embed a VTK renderer inside the Qt GUI."""
+    """Embed one configurable VTK renderer inside the Qt GUI."""
 
     def __init__(self, parent: object | None = None) -> None:
         super().__init__(parent)
         self._scene: PreviewScene | None = None
+        self._display_options = ViewDisplayOptions(
+            show_edges=False,
+            edge_color=(0.82, 0.84, 0.88),
+            show_axes=True,
+        )
         self._renderer = vtk.vtkRenderer()
+
         render_window = self.GetRenderWindow()
         render_window.AddRenderer(self._renderer)
         render_window.SetMultiSamples(0)
         self.Initialize()
 
+        self._interactor = render_window.GetInteractor()
+        if self._interactor is not None:
+            self._interactor.SetInteractorStyle(vtk.vtkInteractorStyleTrackballCamera())
+
+        self._axes_actor = vtk.vtkAxesActor()
+        self._axes_widget = vtk.vtkOrientationMarkerWidget()
+        self._axes_widget.SetOrientationMarker(self._axes_actor)
+        if self._interactor is not None:
+            self._axes_widget.SetInteractor(self._interactor)
+        self._axes_widget.SetViewport(0.0, 0.0, 0.20, 0.20)
+        self._axes_widget.InteractiveOff()
+        self._sync_axes_widget()
+
     @property
     def scene(self) -> PreviewScene | None:
         """Return the currently displayed scene, if any."""
         return self._scene
+
+    @property
+    def display_options(self) -> ViewDisplayOptions:
+        """Return the active display options."""
+        return self._display_options
+
+    def set_display_options(self, options: ViewDisplayOptions) -> None:
+        """Update the view overlays without rebuilding the whole scene."""
+        self._display_options = options
+        self._apply_display_options()
 
     def set_scene(self, scene: PreviewScene) -> None:
         """Replace the currently displayed preview scene."""
@@ -32,7 +62,16 @@ class VtkView(QVTKRenderWindowInteractor):
         render_window.AddRenderer(scene.renderer)
         self._renderer = scene.renderer
         self._scene = scene
-        render_window.Render()
+
+        if self._interactor is not None:
+            self._interactor.SetInteractorStyle(vtk.vtkInteractorStyleTrackballCamera())
+
+        if hasattr(self._axes_widget, "SetDefaultRenderer"):
+            self._axes_widget.SetDefaultRenderer(self._renderer)
+        if hasattr(self._axes_widget, "SetCurrentRenderer"):
+            self._axes_widget.SetCurrentRenderer(self._renderer)
+
+        self._apply_display_options()
 
     def clear_scene(self) -> None:
         """Reset the embedded view to an empty renderer."""
@@ -41,4 +80,24 @@ class VtkView(QVTKRenderWindowInteractor):
         self._renderer = vtk.vtkRenderer()
         render_window.AddRenderer(self._renderer)
         self._scene = None
-        render_window.Render()
+
+        if hasattr(self._axes_widget, "SetDefaultRenderer"):
+            self._axes_widget.SetDefaultRenderer(self._renderer)
+        if hasattr(self._axes_widget, "SetCurrentRenderer"):
+            self._axes_widget.SetCurrentRenderer(self._renderer)
+
+        self._apply_display_options()
+
+    def _sync_axes_widget(self) -> None:
+        """Synchronize the orientation marker widget with the current state."""
+        self._axes_widget.SetEnabled(1 if self._display_options.show_axes else 0)
+
+    def _apply_display_options(self) -> None:
+        """Apply edge and axis settings to the current scene."""
+        if self._scene is not None and self._scene.edge_actor is not None:
+            edge_actor = self._scene.edge_actor
+            edge_actor.SetVisibility(self._display_options.show_edges)
+            edge_actor.GetProperty().SetColor(*self._display_options.edge_color)
+
+        self._sync_axes_widget()
+        self.GetRenderWindow().Render()

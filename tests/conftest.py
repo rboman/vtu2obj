@@ -14,6 +14,14 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from fossils_vtu2obj.export_obj import export_obj_bundle  # noqa: E402
+from fossils_vtu2obj.surface import (  # noqa: E402
+    extract_surface,
+    generate_surface_normals,
+)
+from fossils_vtu2obj.texture import build_palette_texture  # noqa: E402
+from fossils_vtu2obj.uvmap import apply_scalar_uv_map  # noqa: E402
+
 
 @pytest.fixture()
 def sample_unstructured_grid() -> vtk.vtkUnstructuredGrid:
@@ -76,3 +84,20 @@ def sample_vtu_path(
     writer.SetInputData(sample_unstructured_grid)
     assert writer.Write() == 1
     return path
+
+
+@pytest.fixture()
+def sample_obj_bundle(
+    sample_unstructured_grid: vtk.vtkUnstructuredGrid,
+    tmp_path: Path,
+):
+    """Export a tiny OBJ/MTL/PNG bundle for preview and GUI tests."""
+    surface = extract_surface(sample_unstructured_grid)
+    mapped_surface = apply_scalar_uv_map(surface, "stress_von_mises", n_colors=8)
+    mapped_surface = generate_surface_normals(mapped_surface)
+    texture_image = build_palette_texture("rainbow", n_colors=8, height=4)
+    return export_obj_bundle(
+        mapped_surface,
+        tmp_path / "bundle" / "model",
+        texture_image,
+    )
