@@ -47,3 +47,29 @@ def test_list_arrays_command_lists_point_and_cell_arrays(sample_vtu_path: Path) 
     assert "stress_von_mises" in result.output
     assert "displacement" in result.output
     assert "cell_stress_von_mises" in result.output
+
+
+def test_convert_command_writes_obj_bundle(
+    sample_vtu_path: Path,
+    tmp_path: Path,
+) -> None:
+    output_prefix = tmp_path / "converted" / "model"
+    result = runner.invoke(
+        app,
+        [
+            "convert",
+            str(sample_vtu_path),
+            str(output_prefix),
+            "--field",
+            "stress_von_mises",
+            "--colormap",
+            "rainbow",
+            "--n-colors",
+            "16",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert output_prefix.with_suffix(".obj").is_file()
+    assert output_prefix.with_suffix(".mtl").is_file()
+    assert output_prefix.with_suffix(".png").is_file()
