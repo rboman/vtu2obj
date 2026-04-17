@@ -34,8 +34,8 @@ def extract_surface(
 def generate_surface_normals(
     polydata: vtk.vtkPolyData,
     *,
-    splitting: bool = False,
-    feature_angle: float = 60.0,
+    splitting: bool = True,
+    feature_angle: float = 45.0,
 ) -> vtk.vtkPolyData:
     """Generate point normals on a surface mesh."""
     if not isinstance(polydata, vtk.vtkPolyData):
@@ -52,6 +52,7 @@ def generate_surface_normals(
         normals_filter.SplittingOff()
     normals_filter.ConsistencyOn()
     normals_filter.AutoOrientNormalsOn()
+    normals_filter.NonManifoldTraversalOff()
     normals_filter.Update()
 
     surface_with_normals = vtk.vtkPolyData()

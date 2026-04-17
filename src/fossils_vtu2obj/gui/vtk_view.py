@@ -38,6 +38,7 @@ class VtkView(QVTKRenderWindowInteractor):
             self._axes_widget.SetInteractor(self._interactor)
         self._axes_widget.SetViewport(0.0, 0.0, 0.20, 0.20)
         self._axes_widget.InteractiveOff()
+        self._axes_widget.KeyPressActivationOff()
         self._sync_axes_widget()
 
     @property
@@ -88,6 +89,34 @@ class VtkView(QVTKRenderWindowInteractor):
 
         self._apply_display_options()
 
+    def shutdown(self) -> None:
+        """Release the VTK resources held by the embedded Qt widget."""
+        try:
+            self._axes_widget.SetEnabled(0)
+        except RuntimeError:
+            pass
+
+        render_window = self.GetRenderWindow()
+        if render_window is not None:
+            try:
+                render_window.GetRenderers().RemoveAllItems()
+            except RuntimeError:
+                pass
+            try:
+                render_window.Finalize()
+            except RuntimeError:
+                pass
+
+        try:
+            self.Finalize()
+        except RuntimeError:
+            pass
+
+    def closeEvent(self, event) -> None:
+        """Shut down the VTK render window before Qt destroys the widget."""
+        self.shutdown()
+        super().closeEvent(event)
+
     def _sync_axes_widget(self) -> None:
         """Synchronize the orientation marker widget with the current state."""
         self._axes_widget.SetEnabled(1 if self._display_options.show_axes else 0)
@@ -100,4 +129,6 @@ class VtkView(QVTKRenderWindowInteractor):
             edge_actor.GetProperty().SetColor(*self._display_options.edge_color)
 
         self._sync_axes_widget()
-        self.GetRenderWindow().Render()
+        render_window = self.GetRenderWindow()
+        if render_window is not None:
+            render_window.Render()

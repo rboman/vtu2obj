@@ -129,6 +129,11 @@ class MeshViewportPanel(QtWidgets.QWidget):
             self.vtk_view.clear_scene()
         self.set_info(None)
 
+    def shutdown(self) -> None:
+        """Release the VTK resources owned by this panel, when any."""
+        if self.vtk_view is not None:
+            self.vtk_view.shutdown()
+
     def set_info(self, info: MeshInfo | None) -> None:
         """Display the current mesh information summary."""
         self._info = info

@@ -509,4 +509,6 @@ class MainWindow(QtWidgets.QMainWindow):
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
         """Persist settings when the window closes."""
         self._save_settings()
+        self.volume_panel.shutdown()
+        self.bundle_panel.shutdown()
         super().closeEvent(event)

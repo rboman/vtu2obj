@@ -61,9 +61,8 @@ def resolve_dataset_scalar_field(
 def _build_base_renderer() -> vtk.vtkRenderer:
     """Create a renderer with the shared visual defaults."""
     renderer = vtk.vtkRenderer()
-    renderer.SetBackground(0.10, 0.12, 0.16)
-    renderer.SetBackground2(0.22, 0.25, 0.32)
-    renderer.GradientBackgroundOn()
+    renderer.SetBackground(0.3199969482, 0.3400015259, 0.4299992370)
+    renderer.GradientBackgroundOff()
     return renderer
 
 
@@ -75,12 +74,16 @@ def _build_edge_actor(dataset: vtk.vtkDataSet) -> vtk.vtkActor:
     mapper = vtk.vtkPolyDataMapper()
     mapper.SetInputConnection(edge_filter.GetOutputPort())
     mapper.ScalarVisibilityOff()
+    mapper.SetResolveCoincidentTopologyToPolygonOffset()
+    mapper.SetRelativeCoincidentTopologyLineOffsetParameters(0.0, -8.0)
 
     actor = vtk.vtkActor()
     actor.SetMapper(mapper)
     actor.GetProperty().SetLighting(False)
-    actor.GetProperty().SetLineWidth(1.0)
+    actor.GetProperty().SetLineWidth(1.8)
+    actor.GetProperty().SetRenderLinesAsTubes(True)
     actor.SetVisibility(False)
+    actor.SetPickable(False)
     return actor
 
 

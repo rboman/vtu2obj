@@ -27,3 +27,12 @@ def test_generate_surface_normals_adds_point_normals(
     surface_with_normals = generate_surface_normals(surface)
 
     assert surface_with_normals.GetPointData().GetNormals() is not None
+
+
+def test_generate_surface_normals_splits_sharp_edges_by_default(
+    sample_unstructured_grid: vtk.vtkUnstructuredGrid,
+) -> None:
+    surface = extract_surface(sample_unstructured_grid)
+    surface_with_normals = generate_surface_normals(surface)
+
+    assert surface_with_normals.GetNumberOfPoints() > surface.GetNumberOfPoints()
