@@ -1,3 +1,4 @@
+import pytest
 import vtk
 
 from fossils_vtu2obj.preview import (
@@ -27,6 +28,13 @@ def test_build_scalar_preview_scene_returns_renderer_and_scalar_bar(
     assert scene.lookup_table is not None
     assert scene.edge_actor is not None
     assert scene.renderer.GetActors().GetNumberOfItems() == 2
+    assert scene.renderer.GetGradientBackground() == 0
+    assert scene.renderer.GetBackground() == pytest.approx(
+        (0.3199969482, 0.3400015259, 0.4299992370)
+    )
+    assert scene.scalar_bar.GetWidth() == pytest.approx(0.07)
+    assert scene.scalar_bar.GetTitleTextProperty().GetFontSize() == 14
+    assert scene.scalar_bar.GetLabelTextProperty().GetFontSize() == 11
 
 
 def test_build_textured_preview_scene_adds_texture_to_actor(

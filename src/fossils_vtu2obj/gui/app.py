@@ -13,9 +13,15 @@ def launch_gui(initial_path: str | Path | None = None) -> None:
             "PyQt5 is not installed. Install the package with the [gui] extra."
         )
 
+    import vtk
     from PyQt5 import QtWidgets
 
     from .main_window import MainWindow
+
+    output_window = vtk.vtkOutputWindow()
+    output_window.SetDisplayModeToNever()
+    output_window.PromptUserOff()
+    vtk.vtkOutputWindow.SetInstance(output_window)
 
     application = QtWidgets.QApplication.instance()
     owns_application = application is None

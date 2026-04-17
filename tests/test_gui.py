@@ -44,6 +44,10 @@ def test_main_window_loads_scalar_fields(
     assert window.volume_panel.title_label.text() == "Volume Mesh"
     assert window.bundle_panel.title_label.text() == "Exported Surface Bundle"
     assert window.volume_panel.info_text_edit.toPlainText() == "No mesh loaded."
+    assert window.volume_panel.show_edges_checkbox.isChecked() is False
+    assert window.volume_panel.show_axes_checkbox.isChecked() is True
+    assert window.bundle_panel.show_edges_checkbox.isChecked() is False
+    assert window.bundle_panel.show_axes_checkbox.isChecked() is True
 
 
 def test_main_window_restores_persisted_settings(
@@ -135,3 +139,39 @@ def test_main_window_export_reloads_bundle_panel(
     assert window._current_bundle is not None
     assert window._current_bundle.obj_path == export_path
     assert "Texture: present" in window.bundle_panel.info_text_edit.toPlainText()
+
+
+def test_reset_gui_defaults_clears_persisted_settings(
+    qapplication: QtWidgets.QApplication,
+    sample_vtu_path: Path,
+    tmp_path: Path,
+) -> None:
+    _ = qapplication
+    settings = QtCore.QSettings(
+        str(tmp_path / "gui_settings.ini"),
+        QtCore.QSettings.IniFormat,
+    )
+    window = MainWindow(enable_vtk_view=False, settings=settings)
+    window.load_file(sample_vtu_path, refresh=False)
+    window.colormap_combo.setCurrentText("cool_to_warm")
+    window.n_colors_spin.setValue(32)
+    window.normals_checkbox.setChecked(False)
+    window.volume_panel.set_display_options(
+        ViewDisplayOptions(
+            show_edges=True,
+            edge_color=(0.3, 0.2, 0.1),
+            show_axes=False,
+        )
+    )
+    window._save_settings()
+
+    window.reset_gui_defaults()
+
+    assert window.colormap_combo.currentText() == "rainbow"
+    assert window.n_colors_spin.value() == 256
+    assert window.normals_checkbox.isChecked() is True
+    assert window.volume_panel.show_edges_checkbox.isChecked() is False
+    assert window.volume_panel.show_axes_checkbox.isChecked() is True
+    assert window.bundle_panel.show_edges_checkbox.isChecked() is False
+    assert window.bundle_panel.show_axes_checkbox.isChecked() is True
+    assert settings.value("colormap") == "rainbow"

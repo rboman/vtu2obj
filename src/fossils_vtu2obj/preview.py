@@ -96,6 +96,20 @@ def _build_scalar_bar(
     scalar_bar.SetLookupTable(lookup_table)
     scalar_bar.SetTitle(title)
     scalar_bar.SetNumberOfLabels(5)
+    scalar_bar.SetWidth(0.07)
+    scalar_bar.SetHeight(0.82)
+    scalar_bar.SetPosition(0.90, 0.10)
+    scalar_bar.SetUnconstrainedFontSize(True)
+    scalar_bar.SetMaximumWidthInPixels(60)
+    scalar_bar.SetMaximumHeightInPixels(420)
+
+    title_text = scalar_bar.GetTitleTextProperty()
+    title_text.SetFontSize(14)
+    title_text.BoldOff()
+
+    label_text = scalar_bar.GetLabelTextProperty()
+    label_text.SetFontSize(11)
+    label_text.BoldOff()
     return scalar_bar
 
 

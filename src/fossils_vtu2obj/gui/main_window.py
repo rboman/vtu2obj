@@ -28,7 +28,7 @@ class MainWindow(QtWidgets.QMainWindow):
     ORGANIZATION_NAME = "fossils"
     APPLICATION_NAME = "fossils-vtu2obj"
     VOLUME_DEFAULTS = ViewDisplayOptions(
-        show_edges=True,
+        show_edges=False,
         edge_color=(0.78, 0.80, 0.84),
         show_axes=True,
     )
@@ -65,6 +65,7 @@ class MainWindow(QtWidgets.QMainWindow):
         )
 
         self._build_ui()
+        self._apply_default_gui_settings()
         self._restore_settings()
         self._set_controls_enabled(False)
 
@@ -109,6 +110,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.export_button = QtWidgets.QPushButton("Export OBJ/MTL/PNG...")
         self.export_button.clicked.connect(self.export_current_bundle)
         controls_layout.addWidget(self.export_button, 0, 6)
+
+        self.reset_defaults_button = QtWidgets.QPushButton("Reset GUI Defaults")
+        self.reset_defaults_button.clicked.connect(self.reset_gui_defaults)
+        controls_layout.addWidget(self.reset_defaults_button, 0, 7)
 
         self.field_combo = QtWidgets.QComboBox()
         self.field_combo.currentIndexChanged.connect(self._handle_field_changed)
@@ -265,6 +270,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.splitter.setSizes([int(value) for value in splitter_sizes])
             except (TypeError, ValueError):
                 pass
+        else:
+            self.splitter.setSizes([1, 1])
 
     def _save_viewport_settings(self, prefix: str, panel: MeshViewportPanel) -> None:
         """Persist one viewport display-options block."""
@@ -294,6 +301,30 @@ class MainWindow(QtWidgets.QMainWindow):
         self._save_viewport_settings("volume", self.volume_panel)
         self._save_viewport_settings("bundle", self.bundle_panel)
         self._settings.sync()
+
+    def _apply_default_gui_settings(self) -> None:
+        """Apply the built-in default settings to the current session."""
+        self.colormap_combo.setCurrentText("rainbow")
+        self.n_colors_spin.setValue(256)
+        self.normals_checkbox.setChecked(True)
+        self.volume_panel.set_display_options(self.VOLUME_DEFAULTS)
+        self.bundle_panel.set_display_options(self.BUNDLE_DEFAULTS)
+        self.splitter.setSizes([1, 1])
+
+    def reset_gui_defaults(self) -> None:
+        """Forget persisted GUI settings and restore the built-in defaults."""
+        self._settings.clear()
+        self._settings.sync()
+        self._apply_default_gui_settings()
+
+        if self.field_combo.count() > 0:
+            self.field_combo.setCurrentIndex(0)
+            self.reset_current_range()
+            self.refresh_preview()
+        if self._current_bundle_scene is not None:
+            self.bundle_panel.set_display_options(self.BUNDLE_DEFAULTS)
+
+        self.statusBar().showMessage("GUI settings reset to defaults.")
 
     def _show_error(self, message: str) -> None:
         """Display an error dialog and mirror the message in the status bar."""

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import vtk
+from PyQt5 import QtCore
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
 
 from ..model import ViewDisplayOptions
@@ -37,7 +38,6 @@ class VtkView(QVTKRenderWindowInteractor):
         if self._interactor is not None:
             self._axes_widget.SetInteractor(self._interactor)
         self._axes_widget.SetViewport(0.0, 0.0, 0.20, 0.20)
-        self._axes_widget.InteractiveOff()
         self._axes_widget.KeyPressActivationOff()
         self._sync_axes_widget()
 
@@ -73,6 +73,7 @@ class VtkView(QVTKRenderWindowInteractor):
             self._axes_widget.SetCurrentRenderer(self._renderer)
 
         self._apply_display_options()
+        QtCore.QTimer.singleShot(0, self._apply_display_options)
 
     def clear_scene(self) -> None:
         """Reset the embedded view to an empty renderer."""
@@ -117,9 +118,29 @@ class VtkView(QVTKRenderWindowInteractor):
         self.shutdown()
         super().closeEvent(event)
 
+    def showEvent(self, event) -> None:
+        """Re-sync overlays once the native Qt widget becomes visible."""
+        super().showEvent(event)
+        self._apply_display_options()
+        QtCore.QTimer.singleShot(0, self._apply_display_options)
+
     def _sync_axes_widget(self) -> None:
         """Synchronize the orientation marker widget with the current state."""
-        self._axes_widget.SetEnabled(1 if self._display_options.show_axes else 0)
+        if self._interactor is None:
+            return
+
+        self._axes_widget.SetInteractor(self._interactor)
+        if hasattr(self._axes_widget, "SetDefaultRenderer"):
+            self._axes_widget.SetDefaultRenderer(self._renderer)
+        if hasattr(self._axes_widget, "SetCurrentRenderer"):
+            self._axes_widget.SetCurrentRenderer(self._renderer)
+
+        if self._display_options.show_axes:
+            self._axes_widget.EnabledOn()
+            self._axes_widget.InteractiveOff()
+            self._axes_widget.KeyPressActivationOff()
+        else:
+            self._axes_widget.EnabledOff()
 
     def _apply_display_options(self) -> None:
         """Apply edge and axis settings to the current scene."""
