@@ -129,6 +129,70 @@ pip install -e ".[gui,dev]"
 
 This is mainly useful for development, not for normal usage.
 
+## Build a redistributable Windows installer
+
+If you want to distribute the application to users without Python, you can
+build:
+
+* a one-dir application bundle with PyInstaller,
+* a setup executable with Inno Setup.
+
+### Requirements for packaging
+
+* Inno Setup 6 installed (so `ISCC.exe` is available)
+* project installed with development and GUI extras:
+
+```bash
+pip install -e ".[gui,dev]"
+```
+
+### Build everything (recommended)
+
+From the repository root, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File build_installer.ps1
+```
+
+### Useful packaging options
+
+Build only the Inno Setup installer from an existing `dist/`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File build_installer.ps1 -SkipPyInstaller
+```
+
+Build only the PyInstaller one-dir bundle:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File build_installer.ps1 -SkipInno
+```
+
+### Packaging outputs
+
+* `dist/fossils_vtu2obj/` contains `fossils-vtu2obj.exe` (CLI) and
+	`fossils-vtu2obj-gui.exe` (GUI)
+* `dist/installer/` contains the generated setup executable
+
+### Troubleshooting: Windows Defender during build
+
+If Defender reports a threat during packaging in a temporary PyInstaller path
+(often with VTK libraries and a `!upx` suffix), this is typically a heuristic
+false positive.
+
+This project now disables UPX compression by default in:
+
+* `fossils_vtu2obj.spec` (`upx=False`)
+* the packaging pipeline that uses this spec file directly
+
+If you still hit the issue:
+
+* update Defender signatures,
+* restore/quarantine exception only for the blocked temporary file if needed,
+* rerun the build command,
+* optionally add a temporary exclusion on the local PyInstaller cache folder
+  for build time only, then remove that exclusion afterward.
+
 ## Leaving the environment
 
 When you are done, deactivate the virtual environment:

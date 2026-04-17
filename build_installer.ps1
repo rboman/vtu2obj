@@ -15,6 +15,10 @@ Prerequisites:
     - Python environment with project deps installed (including pyinstaller)
     - Inno Setup 6 (ISCC.exe), installed or available in PATH
 
+Defender note:
+        - UPX compression is intentionally disabled in fossils_vtu2obj.spec
+            (`upx=False`) to reduce false positives on VTK binaries.
+
 Outputs:
     - dist/fossils_vtu2obj
     - dist/installer
@@ -30,6 +34,8 @@ $ErrorActionPreference = "Stop"
 $ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ScriptRoot
 
+$pyInstallerDist = Join-Path $ScriptRoot "dist\fossils_vtu2obj"
+
 function Invoke-Step {
     param(
         [string]$Title,
@@ -39,14 +45,43 @@ function Invoke-Step {
     & $Action
 }
 
+function Invoke-ExternalCommand {
+    param(
+        [string]$FilePath,
+        [string[]]$Arguments
+    )
+
+    & $FilePath @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "Command failed (exit code $LASTEXITCODE): $FilePath $($Arguments -join ' ')"
+    }
+}
+
 if (-not $SkipPyInstaller) {
     Invoke-Step -Title "Building executables with PyInstaller" -Action {
-        pyinstaller fossils_vtu2obj.spec --clean --noconfirm
+        Invoke-ExternalCommand -FilePath "pyinstaller" -Arguments @(
+            "fossils_vtu2obj.spec",
+            "--clean",
+            "--noconfirm"
+        )
     }
 }
 
 if (-not $SkipInno) {
     Invoke-Step -Title "Building installer with Inno Setup" -Action {
+        if (-not (Test-Path $pyInstallerDist)) {
+            throw @"
+PyInstaller output folder not found: $pyInstallerDist
+
+Inno Setup expects files from this folder (installer.iss [Files] section).
+Run a full build first:
+  powershell -ExecutionPolicy Bypass -File build_installer.ps1
+
+If Windows Defender quarantined files during build, restore/allow the affected
+file and rerun the full build.
+"@
+        }
+
         $isccPaths = @(
             "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
             "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
@@ -71,7 +106,7 @@ if (-not $SkipInno) {
             throw "Inno Setup compiler (ISCC.exe) not found. Install Inno Setup 6 or add ISCC.exe to PATH."
         }
 
-        & $iscc installer.iss
+        Invoke-ExternalCommand -FilePath $iscc -Arguments @("installer.iss")
     }
 }
 

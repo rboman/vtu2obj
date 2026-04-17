@@ -4,6 +4,7 @@
 #define MyAppURL "https://github.com/rboman/vtu2obj"
 #define MyAppExeName "fossils-vtu2obj-gui.exe"
 #define MyCliExeName "fossils-vtu2obj.exe"
+#define MyBuildDir "dist\fossils_vtu2obj"
 
 [Setup]
 AppId={{2D13DAB9-2A31-4D8E-93D9-318F0E4F5166}
@@ -36,7 +37,7 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 Name: "addtopath"; Description: "Add installation folder to system PATH"; GroupDescription: "Command-line integration:"; Flags: unchecked
 
 [Files]
-Source: "dist\fossils_vtu2obj\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#MyBuildDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "examples\*.vtu"; DestDir: "{app}\examples"; Flags: ignoreversion
 Source: "examples\README.md"; DestDir: "{app}\examples"; Flags: ignoreversion
 

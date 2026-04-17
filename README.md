@@ -73,6 +73,42 @@ GUI dependencies:
 pip install -e .[gui]
 ```
 
+## Build a Windows installer
+
+You can generate redistributable Windows binaries with **PyInstaller** and a
+setup executable with **Inno Setup**.
+
+Prerequisites:
+
+- install development and GUI dependencies,
+- install Inno Setup 6 (provides `ISCC.exe`).
+
+```bash
+pip install -e .[gui,dev]
+```
+
+Run the full packaging pipeline from the repository root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File build_installer.ps1
+```
+
+Useful variants:
+
+```powershell
+# Skip PyInstaller and only rebuild the setup executable
+powershell -ExecutionPolicy Bypass -File build_installer.ps1 -SkipPyInstaller
+
+# Skip Inno Setup and only rebuild the one-dir application bundle
+powershell -ExecutionPolicy Bypass -File build_installer.ps1 -SkipInno
+```
+
+Generated outputs:
+
+- `dist/fossils_vtu2obj/` (one-dir bundle with `fossils-vtu2obj.exe` and
+  `fossils-vtu2obj-gui.exe`),
+- `dist/installer/` (final setup executable produced by Inno Setup).
+
 ## CLI usage
 
 Inspect a file:
