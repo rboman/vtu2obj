@@ -8,8 +8,10 @@ from typing import Annotated
 import typer
 
 from . import __version__
+from .arrays import list_cell_arrays, list_point_arrays
 from .gui.app import launch_gui
 from .integrations.fossils import detect_native_bridge
+from .io_vtk import inspect_dataset
 
 app = typer.Typer(
     help=(
@@ -104,6 +106,53 @@ def _pending_command(command_name: str, step_name: str) -> None:
     raise typer.Exit(code=1)
 
 
+def _handle_cli_error(exc: Exception) -> None:
+    """Render a recoverable CLI error and exit with status code 1."""
+    typer.secho(str(exc), fg=typer.colors.RED)
+    raise typer.Exit(code=1) from exc
+
+
+def _array_kind_label(components: int) -> str:
+    """Return a human-readable array kind from its component count."""
+    if components == 1:
+        return "scalar"
+    if components == 3:
+        return "vector"
+    if components in {6, 9}:
+        return "tensor"
+    return "multi-component"
+
+
+def _print_array_section(title: str, count: int, arrays: object) -> None:
+    """Print one array section in a stable CLI format."""
+    typer.echo(f"{title}: {count}")
+    for array in arrays:
+        kind = _array_kind_label(array.components)
+        typer.echo(
+            f"  - {array.name} [{kind}, components={array.components}, "
+            f"tuples={array.tuples}]"
+        )
+
+
+def _print_summary(input_path: Path, include_counts_only: bool = False) -> None:
+    """Inspect a VTU file and print a stable human-readable summary."""
+    summary = inspect_dataset(input_path)
+    point_arrays = list_point_arrays(summary)
+    cell_arrays = list_cell_arrays(summary)
+
+    typer.echo(f"File: {summary.source_path}")
+    typer.echo(f"Points: {summary.n_points}")
+    typer.echo(f"Cells: {summary.n_cells}")
+    typer.echo(f"Point arrays: {len(point_arrays)}")
+    typer.echo(f"Cell arrays: {len(cell_arrays)}")
+
+    if include_counts_only:
+        return
+
+    _print_array_section("Point data arrays", len(point_arrays), point_arrays)
+    _print_array_section("Cell data arrays", len(cell_arrays), cell_arrays)
+
+
 @app.callback()
 def app_callback(
     version: Annotated[
@@ -123,15 +172,19 @@ def app_callback(
 @app.command("inspect")
 def inspect_command(input_path: InputPathArgument) -> None:
     """Inspect a VTU dataset."""
-    _ = input_path
-    _pending_command("inspect", "step 2")
+    try:
+        _print_summary(input_path, include_counts_only=True)
+    except (FileNotFoundError, ValueError, RuntimeError) as exc:
+        _handle_cli_error(exc)
 
 
 @app.command("list-arrays")
 def list_arrays_command(input_path: InputPathArgument) -> None:
     """List point and cell arrays found in a VTU dataset."""
-    _ = input_path
-    _pending_command("list-arrays", "step 2")
+    try:
+        _print_summary(input_path)
+    except (FileNotFoundError, ValueError, RuntimeError) as exc:
+        _handle_cli_error(exc)
 
 
 @app.command("preview")

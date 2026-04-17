@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from typer.testing import CliRunner
 
 from fossils_vtu2obj import __version__
@@ -28,3 +30,20 @@ def test_native_status_command_succeeds_without_bridge() -> None:
 
     assert result.exit_code == 0
     assert "native bridge" in result.output.lower()
+
+
+def test_inspect_command_reports_dataset_shape(sample_vtu_path: Path) -> None:
+    result = runner.invoke(app, ["inspect", str(sample_vtu_path)])
+
+    assert result.exit_code == 0
+    assert "Points: 4" in result.output
+    assert "Cells: 1" in result.output
+
+
+def test_list_arrays_command_lists_point_and_cell_arrays(sample_vtu_path: Path) -> None:
+    result = runner.invoke(app, ["list-arrays", str(sample_vtu_path)])
+
+    assert result.exit_code == 0
+    assert "stress_von_mises" in result.output
+    assert "displacement" in result.output
+    assert "cell_stress_von_mises" in result.output
