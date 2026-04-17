@@ -14,11 +14,60 @@ DEFAULT_V_COORD = 0.5
 
 DEFAULT_VOLUME_SHOW_EDGES = False
 DEFAULT_VOLUME_SHOW_AXES = True
+DEFAULT_VOLUME_SHOW_BOUNDING_BOX = False
 DEFAULT_VOLUME_EDGE_COLOR = (0.78, 0.80, 0.84)
 
 DEFAULT_BUNDLE_SHOW_EDGES = False
 DEFAULT_BUNDLE_SHOW_AXES = True
+DEFAULT_BUNDLE_SHOW_BOUNDING_BOX = False
 DEFAULT_BUNDLE_EDGE_COLOR = (0.90, 0.90, 0.92)
+
+DEFAULT_BACKGROUND_PRESET = "current_solid"
+DEFAULT_LIGHTING_PRESET = "studio_soft"
+DEFAULT_LIGHTING_INTENSITY = 100
+DEFAULT_CAMERA_PRESET = "3d_angled"
+
+BACKGROUND_PRESET_NAMES = (
+    "current_solid",
+    "paraview_dark_gradient",
+    "black",
+    "white",
+)
+LIGHTING_PRESET_NAMES = (
+    "flat",
+    "studio_soft",
+    "studio_contrast",
+)
+CAMERA_PRESET_NAMES = (
+    "3d_angled",
+    "+X",
+    "-X",
+    "+Y",
+    "-Y",
+    "+Z",
+    "-Z",
+)
+
+BACKGROUND_PRESET_LABELS = {
+    "current_solid": "Current solid",
+    "paraview_dark_gradient": "ParaView dark gradient",
+    "black": "Black",
+    "white": "White",
+}
+LIGHTING_PRESET_LABELS = {
+    "flat": "Flat",
+    "studio_soft": "Studio soft",
+    "studio_contrast": "Studio contrast",
+}
+CAMERA_PRESET_LABELS = {
+    "3d_angled": "3D angled",
+    "+X": "+X",
+    "-X": "-X",
+    "+Y": "+Y",
+    "-Y": "-Y",
+    "+Z": "+Z",
+    "-Z": "-Z",
+}
 
 DEFAULT_WINDOW_WIDTH = 1600
 DEFAULT_WINDOW_HEIGHT = 900
@@ -26,7 +75,11 @@ DEFAULT_GUI_SPLITTER_SIZES = (1, 1)
 DEFAULT_PREVIEW_WINDOW_SIZE = (1280, 800)
 
 DEFAULT_RENDERER_BACKGROUND = (0.3199969482, 0.3400015259, 0.4299992370)
+DEFAULT_RENDERER_BACKGROUND_2 = (0.3199969482, 0.3400015259, 0.4299992370)
+PARAVIEW_DARK_GRADIENT_BACKGROUND = (0.22, 0.24, 0.30)
+PARAVIEW_DARK_GRADIENT_BACKGROUND_2 = (0.06, 0.07, 0.10)
 DEFAULT_TRIHEDRON_VIEWPORT = (0.0, 0.0, 0.20, 0.20)
+DEFAULT_TEXTURE_PREVIEW_SIZE = (260, 96)
 
 DEFAULT_EDGE_LINE_WIDTH = 1.8
 DEFAULT_EDGE_LINE_OFFSET = (0.0, -8.0)

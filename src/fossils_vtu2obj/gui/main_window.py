@@ -15,13 +15,18 @@ from ..arrays import (
 )
 from ..colormaps import list_colormap_names
 from ..defaults import (
+    DEFAULT_BACKGROUND_PRESET,
     DEFAULT_BUNDLE_EDGE_COLOR,
     DEFAULT_BUNDLE_SHOW_AXES,
+    DEFAULT_BUNDLE_SHOW_BOUNDING_BOX,
     DEFAULT_BUNDLE_SHOW_EDGES,
+    DEFAULT_CAMERA_PRESET,
     DEFAULT_COLORMAP_NAME,
     DEFAULT_GENERATE_NORMALS,
     DEFAULT_GITHUB_URL,
     DEFAULT_GUI_SPLITTER_SIZES,
+    DEFAULT_LIGHTING_INTENSITY,
+    DEFAULT_LIGHTING_PRESET,
     DEFAULT_N_COLORS,
     DEFAULT_N_COLORS_MAX,
     DEFAULT_N_COLORS_MIN,
@@ -30,8 +35,10 @@ from ..defaults import (
     DEFAULT_SPINBOX_MAX,
     DEFAULT_SPINBOX_MIN,
     DEFAULT_SPINBOX_STEP,
+    DEFAULT_TEXTURE_PREVIEW_SIZE,
     DEFAULT_VOLUME_EDGE_COLOR,
     DEFAULT_VOLUME_SHOW_AXES,
+    DEFAULT_VOLUME_SHOW_BOUNDING_BOX,
     DEFAULT_VOLUME_SHOW_EDGES,
     DEFAULT_WINDOW_HEIGHT,
     DEFAULT_WINDOW_TITLE,
@@ -294,11 +301,21 @@ class MainWindow(QtWidgets.QMainWindow):
         show_edges=DEFAULT_VOLUME_SHOW_EDGES,
         edge_color=DEFAULT_VOLUME_EDGE_COLOR,
         show_axes=DEFAULT_VOLUME_SHOW_AXES,
+        show_bounding_box=DEFAULT_VOLUME_SHOW_BOUNDING_BOX,
+        background_preset=DEFAULT_BACKGROUND_PRESET,
+        lighting_preset=DEFAULT_LIGHTING_PRESET,
+        lighting_intensity=DEFAULT_LIGHTING_INTENSITY,
+        camera_preset=DEFAULT_CAMERA_PRESET,
     )
     BUNDLE_DEFAULTS = ViewDisplayOptions(
         show_edges=DEFAULT_BUNDLE_SHOW_EDGES,
         edge_color=DEFAULT_BUNDLE_EDGE_COLOR,
         show_axes=DEFAULT_BUNDLE_SHOW_AXES,
+        show_bounding_box=DEFAULT_BUNDLE_SHOW_BOUNDING_BOX,
+        background_preset=DEFAULT_BACKGROUND_PRESET,
+        lighting_preset=DEFAULT_LIGHTING_PRESET,
+        lighting_intensity=DEFAULT_LIGHTING_INTENSITY,
+        camera_preset=DEFAULT_CAMERA_PRESET,
     )
 
     def __init__(
@@ -417,7 +434,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.open_vtu_action.triggered.connect(self.open_file_dialog)
 
         self.open_obj_action = QtWidgets.QAction(
-            standard_icon(self, QtWidgets.QStyle.SP_DirOpenIcon),
+            standard_icon(self, QtWidgets.QStyle.SP_DialogOpenButton),
             "Open OBJ Bundle...",
             self,
         )
@@ -531,13 +548,14 @@ class MainWindow(QtWidgets.QMainWindow):
             "Load a VTU file, choose the scalar-mapping settings, preview the "
             "volume mesh, and export the OBJ bundle."
         )
-        layout = QtWidgets.QGridLayout(group)
+        layout = QtWidgets.QVBoxLayout(group)
 
+        open_row = QtWidgets.QHBoxLayout()
         self.open_button = QtWidgets.QPushButton("Open VTU...")
         self.open_button.setIcon(self.open_vtu_action.icon())
         self.open_button.setToolTip(self.open_vtu_action.toolTip())
         self.open_button.clicked.connect(self.open_file_dialog)
-        layout.addWidget(self.open_button, 0, 0)
+        open_row.addWidget(self.open_button)
 
         self.vtu_path_edit = QtWidgets.QLineEdit()
         self.vtu_path_edit.setReadOnly(True)
@@ -546,7 +564,11 @@ class MainWindow(QtWidgets.QMainWindow):
             "Absolute path of the VTU file currently loaded for preview and "
             "conversion."
         )
-        layout.addWidget(self.vtu_path_edit, 0, 1, 1, 5)
+        open_row.addWidget(self.vtu_path_edit, stretch=1)
+        layout.addLayout(open_row)
+
+        display_group = QtWidgets.QGroupBox("Display / Color Mapping", group)
+        display_layout = QtWidgets.QGridLayout(display_group)
 
         self.field_combo = QtWidgets.QComboBox()
         self.field_combo.setToolTip(
@@ -557,8 +579,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self._handle_field_changed)
         field_label = QtWidgets.QLabel("Field")
         field_label.setToolTip(self.field_combo.toolTip())
-        layout.addWidget(field_label, 1, 0)
-        layout.addWidget(self.field_combo, 1, 1)
+        display_layout.addWidget(field_label, 0, 0)
+        display_layout.addWidget(self.field_combo, 0, 1)
 
         self.colormap_combo = QtWidgets.QComboBox()
         for name in list_colormap_names():
@@ -570,20 +592,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.colormap_combo.currentIndexChanged.connect(self.refresh_preview)
         colormap_label = QtWidgets.QLabel("Colormap")
         colormap_label.setToolTip(self.colormap_combo.toolTip())
-        layout.addWidget(colormap_label, 1, 2)
-        layout.addWidget(self.colormap_combo, 1, 3)
-
-        self.n_colors_spin = QtWidgets.QSpinBox()
-        self.n_colors_spin.setRange(DEFAULT_N_COLORS_MIN, DEFAULT_N_COLORS_MAX)
-        self.n_colors_spin.setValue(DEFAULT_N_COLORS)
-        self.n_colors_spin.setToolTip(
-            "Number of discrete palette bins used for preview, UV quantization, "
-            "and the exported PNG texture."
-        )
-        n_colors_label = QtWidgets.QLabel("Color bins")
-        n_colors_label.setToolTip(self.n_colors_spin.toolTip())
-        layout.addWidget(n_colors_label, 1, 4)
-        layout.addWidget(self.n_colors_spin, 1, 5)
+        display_layout.addWidget(colormap_label, 0, 2)
+        display_layout.addWidget(self.colormap_combo, 0, 3)
 
         self.vmin_spin = QtWidgets.QDoubleSpinBox()
         self.vmax_spin = QtWidgets.QDoubleSpinBox()
@@ -601,20 +611,12 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         vmin_label = QtWidgets.QLabel("vmin")
         vmin_label.setToolTip(self.vmin_spin.toolTip())
-        layout.addWidget(vmin_label, 2, 0)
-        layout.addWidget(self.vmin_spin, 2, 1)
+        display_layout.addWidget(vmin_label, 1, 0)
+        display_layout.addWidget(self.vmin_spin, 1, 1)
         vmax_label = QtWidgets.QLabel("vmax")
         vmax_label.setToolTip(self.vmax_spin.toolTip())
-        layout.addWidget(vmax_label, 2, 2)
-        layout.addWidget(self.vmax_spin, 2, 3)
-
-        self.normals_checkbox = QtWidgets.QCheckBox("Generate normals")
-        self.normals_checkbox.setChecked(DEFAULT_GENERATE_NORMALS)
-        self.normals_checkbox.setToolTip(
-            "Generate and export point normals on the surface mesh so downstream "
-            "tools can shade the OBJ more smoothly."
-        )
-        layout.addWidget(self.normals_checkbox, 2, 4, 1, 2)
+        display_layout.addWidget(vmax_label, 1, 2)
+        display_layout.addWidget(self.vmax_spin, 1, 3)
 
         self.reset_range_button = QtWidgets.QPushButton("Use Data Range")
         self.reset_range_button.setIcon(
@@ -625,7 +627,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "selected scalar field."
         )
         self.reset_range_button.clicked.connect(self.reset_current_range)
-        layout.addWidget(self.reset_range_button, 3, 0, 1, 2)
+        display_layout.addWidget(self.reset_range_button, 2, 0, 1, 2)
 
         self.refresh_button = QtWidgets.QPushButton("Refresh Volume View")
         self.refresh_button.setIcon(
@@ -636,13 +638,39 @@ class MainWindow(QtWidgets.QMainWindow):
             "and colormap settings."
         )
         self.refresh_button.clicked.connect(self.refresh_preview)
-        layout.addWidget(self.refresh_button, 3, 2, 1, 2)
+        display_layout.addWidget(self.refresh_button, 2, 2, 1, 2)
+        layout.addWidget(display_group)
+
+        export_group = QtWidgets.QGroupBox("Export", group)
+        export_layout = QtWidgets.QGridLayout(export_group)
+
+        self.normals_checkbox = QtWidgets.QCheckBox("Generate normals")
+        self.normals_checkbox.setChecked(DEFAULT_GENERATE_NORMALS)
+        self.normals_checkbox.setToolTip(
+            "Generate and export point normals on the surface mesh so downstream "
+            "tools can shade the OBJ more smoothly."
+        )
+        export_layout.addWidget(self.normals_checkbox, 0, 0)
+
+        self.n_colors_spin = QtWidgets.QSpinBox()
+        self.n_colors_spin.setRange(DEFAULT_N_COLORS_MIN, DEFAULT_N_COLORS_MAX)
+        self.n_colors_spin.setValue(DEFAULT_N_COLORS)
+        self.n_colors_spin.setToolTip(
+            "Number of discrete palette bins used for preview, UV quantization, "
+            "and the exported PNG texture."
+        )
+        n_colors_label = QtWidgets.QLabel("Color bins")
+        n_colors_label.setToolTip(self.n_colors_spin.toolTip())
+        export_layout.addWidget(n_colors_label, 0, 1)
+        export_layout.addWidget(self.n_colors_spin, 0, 2)
 
         self.export_button = QtWidgets.QPushButton("Export OBJ/MTL/PNG...")
         self.export_button.setIcon(self.export_bundle_action.icon())
         self.export_button.setToolTip(self.export_bundle_action.toolTip())
         self.export_button.clicked.connect(self.start_export_current_bundle_async)
-        layout.addWidget(self.export_button, 3, 4, 1, 2)
+        export_layout.addWidget(self.export_button, 0, 3)
+        export_layout.setColumnStretch(3, 1)
+        layout.addWidget(export_group)
 
         return group
 
@@ -653,13 +681,15 @@ class MainWindow(QtWidgets.QMainWindow):
             "Load an exported OBJ/MTL/PNG bundle and compare it against the VTU "
             "volume view."
         )
-        layout = QtWidgets.QGridLayout(group)
+        layout = QtWidgets.QVBoxLayout(group)
+
+        open_row = QtWidgets.QHBoxLayout()
 
         self.open_obj_button = QtWidgets.QPushButton("Open OBJ Bundle...")
         self.open_obj_button.setIcon(self.open_obj_action.icon())
         self.open_obj_button.setToolTip(self.open_obj_action.toolTip())
         self.open_obj_button.clicked.connect(self.open_obj_bundle_dialog)
-        layout.addWidget(self.open_obj_button, 0, 0)
+        open_row.addWidget(self.open_obj_button)
 
         self.obj_path_edit = QtWidgets.QLineEdit()
         self.obj_path_edit.setReadOnly(True)
@@ -670,7 +700,8 @@ class MainWindow(QtWidgets.QMainWindow):
             "Absolute path of the OBJ file currently displayed in the right-hand "
             "comparison viewport."
         )
-        layout.addWidget(self.obj_path_edit, 0, 1)
+        open_row.addWidget(self.obj_path_edit, stretch=1)
+        layout.addLayout(open_row)
 
         hint_label = QtWidgets.QLabel(
             "The right panel shows the last exported bundle or any OBJ bundle you open."
@@ -680,9 +711,90 @@ class MainWindow(QtWidgets.QMainWindow):
             "The OBJ viewport can be updated automatically after export from the "
             "left panel, or manually by opening an existing bundle."
         )
-        layout.addWidget(hint_label, 1, 0, 1, 2)
+        layout.addWidget(hint_label)
+
+        texture_group = QtWidgets.QGroupBox("Texture Preview", group)
+        texture_layout = QtWidgets.QGridLayout(texture_group)
+        self.texture_preview_label = QtWidgets.QLabel(
+            "No texture loaded",
+            texture_group,
+        )
+        self.texture_preview_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.texture_preview_label.setMinimumSize(*DEFAULT_TEXTURE_PREVIEW_SIZE)
+        self.texture_preview_label.setToolTip(
+            "Quick preview of the texture associated with the currently loaded "
+            "OBJ bundle."
+        )
+        self.texture_dimensions_label = QtWidgets.QLabel("Size: -", texture_group)
+        self.texture_dimensions_label.setToolTip(
+            "Dimensions in pixels of the currently loaded texture."
+        )
+        self.texture_path_label = QtWidgets.QLabel("Path: -", texture_group)
+        self.texture_path_label.setWordWrap(True)
+        self.texture_path_label.setToolTip(
+            "Filesystem path of the currently loaded texture, when present."
+        )
+        texture_layout.addWidget(self.texture_preview_label, 0, 0, 3, 1)
+        texture_layout.addWidget(self.texture_dimensions_label, 0, 1)
+        texture_layout.addWidget(self.texture_path_label, 1, 1)
+        texture_layout.setColumnStretch(1, 1)
+        layout.addWidget(texture_group)
+
+        self._update_texture_preview()
 
         return group
+
+    def _clear_texture_preview(self) -> None:
+        """Reset the lightweight OBJ texture preview widgets."""
+        self.texture_preview_label.setPixmap(QtGui.QPixmap())
+        self.texture_preview_label.setText("No texture loaded")
+        self.texture_dimensions_label.setText("Size: -")
+        self.texture_path_label.setText("Path: -")
+
+    def _update_texture_preview(
+        self,
+        texture_path: str | Path | None = None,
+        texture_size: tuple[int, int] | None = None,
+    ) -> None:
+        """Refresh the lightweight texture preview shown above the OBJ viewport."""
+        if texture_path is None:
+            if (
+                self._current_bundle is None
+                or self._current_bundle.texture_path is None
+            ):
+                self._clear_texture_preview()
+                return
+            texture_path = self._current_bundle.texture_path
+
+        resolved_path = Path(texture_path).expanduser().resolve(strict=False)
+        if not resolved_path.is_file():
+            self._clear_texture_preview()
+            self.texture_preview_label.setText("Texture file missing")
+            self.texture_path_label.setText(f"Path: {resolved_path}")
+            return
+
+        pixmap = QtGui.QPixmap(str(resolved_path))
+        if pixmap.isNull():
+            self._clear_texture_preview()
+            self.texture_preview_label.setText("Texture preview unavailable")
+            self.texture_path_label.setText(f"Path: {resolved_path}")
+            return
+
+        preview_width, preview_height = DEFAULT_TEXTURE_PREVIEW_SIZE
+        scaled_pixmap = pixmap.scaled(
+            preview_width,
+            preview_height,
+            QtCore.Qt.KeepAspectRatio,
+            QtCore.Qt.SmoothTransformation,
+        )
+        self.texture_preview_label.setText("")
+        self.texture_preview_label.setPixmap(scaled_pixmap)
+        if texture_size is None:
+            texture_size = (pixmap.width(), pixmap.height())
+        self.texture_dimensions_label.setText(
+            f"Size: {texture_size[0]} x {texture_size[1]} px"
+        )
+        self.texture_path_label.setText(f"Path: {resolved_path}")
 
     def _set_controls_enabled(self, enabled: bool) -> None:
         """Enable or disable controls that depend on a loaded VTU dataset."""
@@ -719,6 +831,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.field_combo.blockSignals(False)
         self.volume_panel.clear_scene()
         self.bundle_panel.clear_scene()
+        self._clear_texture_preview()
         self._set_controls_enabled(False)
 
         self._settings.remove("last_file_path")
@@ -773,6 +886,40 @@ class MainWindow(QtWidgets.QMainWindow):
                     self._settings.value(f"{prefix}_show_axes"),
                     defaults.show_axes,
                 ),
+                show_bounding_box=self._setting_to_bool(
+                    self._settings.value(f"{prefix}_show_bounding_box"),
+                    defaults.show_bounding_box,
+                ),
+                background_preset=str(
+                    self._settings.value(
+                        f"{prefix}_background_preset",
+                        defaults.background_preset,
+                    )
+                ),
+                lighting_preset=str(
+                    self._settings.value(
+                        f"{prefix}_lighting_preset",
+                        defaults.lighting_preset,
+                    )
+                ),
+                lighting_intensity=max(
+                    0,
+                    min(
+                        200,
+                        int(
+                            self._settings.value(
+                                f"{prefix}_lighting_intensity",
+                                defaults.lighting_intensity,
+                            )
+                        ),
+                    ),
+                ),
+                camera_preset=str(
+                    self._settings.value(
+                        f"{prefix}_camera_preset",
+                        defaults.camera_preset,
+                    )
+                ),
             )
         )
 
@@ -824,6 +971,23 @@ class MainWindow(QtWidgets.QMainWindow):
             self._rgb_to_hex(options.edge_color),
         )
         self._settings.setValue(f"{prefix}_show_axes", options.show_axes)
+        self._settings.setValue(
+            f"{prefix}_show_bounding_box",
+            options.show_bounding_box,
+        )
+        self._settings.setValue(
+            f"{prefix}_background_preset",
+            options.background_preset,
+        )
+        self._settings.setValue(
+            f"{prefix}_lighting_preset",
+            options.lighting_preset,
+        )
+        self._settings.setValue(
+            f"{prefix}_lighting_intensity",
+            options.lighting_intensity,
+        )
+        self._settings.setValue(f"{prefix}_camera_preset", options.camera_preset)
 
     def _save_settings(self) -> None:
         """Persist the current lightweight GUI settings."""
@@ -1333,6 +1497,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self._current_bundle_scene = result.scene
         self.obj_path_edit.setText(str(result.bundle.obj_path))
         self.bundle_panel.set_scene(result.scene)
+        self._update_texture_preview(
+            result.bundle.texture_path,
+            result.scene.info.texture_size if result.scene.info is not None else None,
+        )
         self._remember_directory("last_obj_bundle_directory", result.bundle.obj_path)
         self._add_recent_file("recent_obj_files", result.bundle.obj_path)
         self.statusBar().showMessage(f"Loaded OBJ bundle {result.bundle.obj_path.name}")
@@ -1347,8 +1515,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self._current_bundle_scene = result.scene
         self.obj_path_edit.setText(str(result.bundle.obj_path))
         self.bundle_panel.set_scene(result.scene)
+        self._update_texture_preview(
+            result.bundle.texture_path,
+            result.scene.info.texture_size if result.scene.info is not None else None,
+        )
         self._remember_directory("last_export_directory", result.bundle.obj_path)
         self._remember_directory("last_obj_bundle_directory", result.bundle.obj_path)
+        self._add_recent_file("recent_obj_files", result.bundle.obj_path)
         self.statusBar().showMessage(
             f"Exported bundle to {result.bundle.obj_path.parent}"
         )

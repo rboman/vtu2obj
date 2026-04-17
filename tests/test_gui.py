@@ -10,7 +10,13 @@ pytest.importorskip("PyQt5")
 from PyQt5 import QtCore, QtWidgets
 
 import fossils_vtu2obj.gui.main_window as main_window_module
-from fossils_vtu2obj.defaults import DEFAULT_N_COLORS
+from fossils_vtu2obj.defaults import (
+    DEFAULT_BACKGROUND_PRESET,
+    DEFAULT_CAMERA_PRESET,
+    DEFAULT_LIGHTING_INTENSITY,
+    DEFAULT_LIGHTING_PRESET,
+    DEFAULT_N_COLORS,
+)
 from fossils_vtu2obj.gui.main_window import (
     MainWindow,
     _format_file_size,
@@ -55,18 +61,46 @@ def test_main_window_loads_scalar_fields(
     assert window.volume_panel.info_text_edit.toPlainText() == "No mesh loaded."
     assert window.volume_panel.show_edges_checkbox.isChecked() is False
     assert window.volume_panel.show_axes_checkbox.isChecked() is True
+    assert window.volume_panel.show_bounding_box_checkbox.isChecked() is False
+    assert (
+        window.volume_panel.background_combo.currentData()
+        == DEFAULT_BACKGROUND_PRESET
+    )
+    assert window.volume_panel.lighting_combo.currentData() == DEFAULT_LIGHTING_PRESET
+    assert (
+        window.volume_panel.lighting_intensity_slider.value()
+        == DEFAULT_LIGHTING_INTENSITY
+    )
+    assert (
+        window.volume_panel.camera_preset_combo.currentData()
+        == DEFAULT_CAMERA_PRESET
+    )
     assert window.bundle_panel.show_edges_checkbox.isChecked() is False
     assert window.bundle_panel.show_axes_checkbox.isChecked() is True
+    assert window.bundle_panel.show_bounding_box_checkbox.isChecked() is False
     assert window.open_button.toolTip()
+    assert window.open_obj_button.toolTip()
     assert window.export_button.toolTip()
     assert window.field_combo.toolTip()
     assert window.open_button.icon().isNull() is False
+    assert window.open_obj_button.icon().isNull() is False
     assert window.export_button.icon().isNull() is False
+    assert window.volume_panel.edge_color_button.icon().isNull() is False
     assert window.windowIcon().isNull() is False
     assert hasattr(window, "settings_menu")
     assert window.settings_menu.title() == "&Settings"
     assert hasattr(window, "reset_defaults_action")
     assert not hasattr(window, "reset_defaults_button")
+    assert window.texture_preview_label.text() == "No texture loaded"
+    assert window.texture_dimensions_label.text() == "Size: -"
+    assert "Display / Color Mapping" in [
+        child.title()
+        for child in window.vtu_controls_group.findChildren(QtWidgets.QGroupBox)
+    ]
+    assert "Export" in [
+        child.title()
+        for child in window.vtu_controls_group.findChildren(QtWidgets.QGroupBox)
+    ]
 
 
 def test_main_window_restores_persisted_settings(
@@ -92,6 +126,11 @@ def test_main_window_restores_persisted_settings(
             show_edges=False,
             edge_color=(0.2, 0.4, 0.6),
             show_axes=True,
+            show_bounding_box=True,
+            background_preset="black",
+            lighting_preset="studio_contrast",
+            lighting_intensity=135,
+            camera_preset="-Y",
         )
     )
     first_window.bundle_panel.set_display_options(
@@ -99,6 +138,11 @@ def test_main_window_restores_persisted_settings(
             show_edges=True,
             edge_color=(0.7, 0.3, 0.2),
             show_axes=False,
+            show_bounding_box=True,
+            background_preset="white",
+            lighting_preset="flat",
+            lighting_intensity=75,
+            camera_preset="+Z",
         )
     )
     first_window.load_obj_bundle(sample_obj_bundle.obj_path)
@@ -113,8 +157,18 @@ def test_main_window_restores_persisted_settings(
     assert second_window.normals_checkbox.isChecked() is False
     assert second_window.vtu_path_edit.text().endswith("sample.vtu")
     assert second_window.volume_panel.show_edges_checkbox.isChecked() is False
+    assert second_window.volume_panel.show_bounding_box_checkbox.isChecked() is True
+    assert second_window.volume_panel.background_combo.currentData() == "black"
+    assert second_window.volume_panel.lighting_combo.currentData() == "studio_contrast"
+    assert second_window.volume_panel.lighting_intensity_slider.value() == 135
+    assert second_window.volume_panel.camera_preset_combo.currentData() == "-Y"
     assert second_window.bundle_panel.show_edges_checkbox.isChecked() is True
     assert second_window.bundle_panel.show_axes_checkbox.isChecked() is False
+    assert second_window.bundle_panel.show_bounding_box_checkbox.isChecked() is True
+    assert second_window.bundle_panel.background_combo.currentData() == "white"
+    assert second_window.bundle_panel.lighting_combo.currentData() == "flat"
+    assert second_window.bundle_panel.lighting_intensity_slider.value() == 75
+    assert second_window.bundle_panel.camera_preset_combo.currentData() == "+Z"
     assert second_window._current_bundle is not None
     assert second_window._current_bundle.obj_path == sample_obj_bundle.obj_path
     assert second_window.obj_path_edit.text().endswith(".obj")
@@ -135,6 +189,11 @@ def test_main_window_can_load_obj_bundle(
     info_text = window.bundle_panel.info_text_edit.toPlainText()
     assert "Texture: present" in info_text
     assert "UVs: present" in info_text
+    assert "Texture size:" in info_text
+    assert window.texture_preview_label.pixmap() is not None
+    assert window.texture_preview_label.pixmap().isNull() is False
+    assert window.texture_dimensions_label.text() == "Size: 8 x 4 px"
+    assert window.texture_path_label.text().endswith("model.png")
 
 
 def test_main_window_export_reloads_bundle_panel(
@@ -183,6 +242,11 @@ def test_reset_gui_defaults_clears_persisted_settings(
             show_edges=True,
             edge_color=(0.3, 0.2, 0.1),
             show_axes=False,
+            show_bounding_box=True,
+            background_preset="black",
+            lighting_preset="flat",
+            lighting_intensity=90,
+            camera_preset="-X",
         )
     )
     window._save_settings()
@@ -195,8 +259,23 @@ def test_reset_gui_defaults_clears_persisted_settings(
     assert window.field_combo.currentText() == "stress_von_mises"
     assert window.volume_panel.show_edges_checkbox.isChecked() is False
     assert window.volume_panel.show_axes_checkbox.isChecked() is True
+    assert window.volume_panel.show_bounding_box_checkbox.isChecked() is False
+    assert (
+        window.volume_panel.background_combo.currentData()
+        == DEFAULT_BACKGROUND_PRESET
+    )
+    assert window.volume_panel.lighting_combo.currentData() == DEFAULT_LIGHTING_PRESET
+    assert (
+        window.volume_panel.lighting_intensity_slider.value()
+        == DEFAULT_LIGHTING_INTENSITY
+    )
+    assert (
+        window.volume_panel.camera_preset_combo.currentData()
+        == DEFAULT_CAMERA_PRESET
+    )
     assert window.bundle_panel.show_edges_checkbox.isChecked() is False
     assert window.bundle_panel.show_axes_checkbox.isChecked() is True
+    assert window.bundle_panel.show_bounding_box_checkbox.isChecked() is False
     assert settings.value("colormap") == "rainbow"
 
 
@@ -477,6 +556,8 @@ def test_clear_views_unloads_current_meshes(
     assert window.field_combo.count() == 0
     assert window.volume_panel.info_text_edit.toPlainText() == "No mesh loaded."
     assert window.bundle_panel.info_text_edit.toPlainText() == "No mesh loaded."
+    assert window.texture_preview_label.text() == "No texture loaded"
+    assert window.texture_dimensions_label.text() == "Size: -"
     assert window.export_button.isEnabled() is False
     assert settings.value("last_file_path") is None
     assert settings.value("last_obj_bundle_path") is None

@@ -109,6 +109,7 @@ def test_build_obj_bundle_preview_scene_loads_texture(sample_obj_bundle) -> None
     assert scene.info is not None
     assert scene.info.has_texture is True
     assert scene.info.has_tcoords is True
+    assert scene.info.texture_size == (8, 4)
 
 
 def test_build_obj_bundle_preview_scene_falls_back_without_texture(

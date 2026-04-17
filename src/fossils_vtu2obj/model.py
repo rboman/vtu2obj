@@ -6,10 +6,26 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from .defaults import DEFAULT_COLORMAP_NAME, DEFAULT_N_COLORS, DEFAULT_TEXTURE_HEIGHT
+from .defaults import (
+    DEFAULT_BACKGROUND_PRESET,
+    DEFAULT_CAMERA_PRESET,
+    DEFAULT_COLORMAP_NAME,
+    DEFAULT_LIGHTING_INTENSITY,
+    DEFAULT_LIGHTING_PRESET,
+    DEFAULT_N_COLORS,
+    DEFAULT_TEXTURE_HEIGHT,
+)
 
 ArrayAssociation = Literal["point", "cell"]
 RgbColor = tuple[float, float, float]
+BackgroundPreset = Literal[
+    "current_solid",
+    "paraview_dark_gradient",
+    "black",
+    "white",
+]
+LightingPreset = Literal["flat", "studio_soft", "studio_contrast"]
+CameraPreset = Literal["3d_angled", "+X", "-X", "+Y", "-Y", "+Z", "-Z"]
 
 
 @dataclass(frozen=True)
@@ -95,6 +111,11 @@ class ViewDisplayOptions:
     show_edges: bool
     edge_color: RgbColor
     show_axes: bool
+    show_bounding_box: bool = False
+    background_preset: BackgroundPreset = DEFAULT_BACKGROUND_PRESET
+    lighting_preset: LightingPreset = DEFAULT_LIGHTING_PRESET
+    lighting_intensity: int = DEFAULT_LIGHTING_INTENSITY
+    camera_preset: CameraPreset = DEFAULT_CAMERA_PRESET
 
 
 @dataclass(frozen=True)
@@ -115,6 +136,7 @@ class MeshInfo:
     has_texture: bool | None = None
     has_tcoords: bool = False
     has_normals: bool = False
+    texture_size: tuple[int, int] | None = None
 
     def as_lines(self) -> tuple[str, ...]:
         """Render the summary as stable, human-readable lines."""
@@ -147,6 +169,9 @@ class MeshInfo:
             )
             if self.texture_path is not None:
                 lines.append(f"Texture path: {self.texture_path}")
+            if self.texture_size is not None:
+                width, height = self.texture_size
+                lines.append(f"Texture size: {width} x {height} px")
 
         lines.append("UVs: present" if self.has_tcoords else "UVs: missing")
         lines.append("Normals: present" if self.has_normals else "Normals: missing")

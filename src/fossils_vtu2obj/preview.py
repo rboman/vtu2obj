@@ -160,6 +160,8 @@ def describe_dataset_mesh(
 def describe_obj_bundle_mesh(
     polydata: vtk.vtkPolyData,
     bundle: ObjBundlePaths,
+    *,
+    texture_size: tuple[int, int] | None = None,
 ) -> MeshInfo:
     """Collect the mesh and bundle details shown for one loaded OBJ scene."""
     return MeshInfo(
@@ -172,6 +174,7 @@ def describe_obj_bundle_mesh(
         has_texture=bundle.has_texture,
         has_tcoords=polydata.GetPointData().GetTCoords() is not None,
         has_normals=polydata.GetPointData().GetNormals() is not None,
+        texture_size=texture_size,
     )
 
 
@@ -401,6 +404,12 @@ def build_obj_bundle_preview_scene(
         texture.InterpolateOff()
         texture.RepeatOff()
         actor.SetTexture(texture)
+        texture_size = (
+            texture_image.GetDimensions()[0],
+            texture_image.GetDimensions()[1],
+        )
+    else:
+        texture_size = None
 
     edge_actor = _build_edge_actor(polydata)
 
@@ -416,7 +425,11 @@ def build_obj_bundle_preview_scene(
         edge_actor=edge_actor,
         texture_image=texture_image,
         texture=texture,
-        info=describe_obj_bundle_mesh(polydata, resolved_bundle),
+        info=describe_obj_bundle_mesh(
+            polydata,
+            resolved_bundle,
+            texture_size=texture_size,
+        ),
     )
 
 
