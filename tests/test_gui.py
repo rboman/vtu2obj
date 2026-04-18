@@ -128,7 +128,6 @@ def test_main_window_restores_persisted_settings(
     first_window.colormap_combo.setCurrentText("cool_to_warm")
     first_window.n_colors_spin.setValue(32)
     first_window.normals_checkbox.setChecked(False)
-    first_window.main_splitter.setSizes([420, 780])
     first_window.volume_panel.set_display_options(
         ViewDisplayOptions(
             show_edges=False,
