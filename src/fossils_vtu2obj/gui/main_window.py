@@ -543,9 +543,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.help_menu = menu_bar.addMenu("&Help")
         self.help_menu.addAction(self.about_action)
         self.help_menu.addAction(self.github_action)
-
-        self.credits_menu = menu_bar.addMenu("&Credits")
-        self.credits_menu.addAction(self.credits_action)
+        self.help_menu.addAction(self.credits_action)
 
     def _build_vtu_controls_group(self) -> QtWidgets.QGroupBox:
         """Build the left-hand VTU and conversion controls."""
