@@ -24,7 +24,6 @@ from ..defaults import (
     DEFAULT_COLORMAP_NAME,
     DEFAULT_GENERATE_NORMALS,
     DEFAULT_GITHUB_URL,
-    DEFAULT_GUI_SPLITTER_SIZES,
     DEFAULT_LIGHTING_INTENSITY,
     DEFAULT_LIGHTING_PRESET,
     DEFAULT_N_COLORS,
@@ -380,29 +379,26 @@ class MainWindow(QtWidgets.QMainWindow):
         root_layout.setContentsMargins(8, 8, 8, 8)
         root_layout.setSpacing(8)
 
-        self.main_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal, self)
-        self.main_splitter.setToolTip(
-            "Resize the left VTU workflow panel and the right OBJ comparison "
-            "panel independently."
-        )
-        root_layout.addWidget(self.main_splitter, stretch=1)
+        panels_grid = QtWidgets.QGridLayout()
+        panels_grid.setSpacing(8)
+        panels_grid.setColumnStretch(0, 1)
+        panels_grid.setColumnStretch(1, 1)
+        root_layout.addLayout(panels_grid, stretch=1)
 
         self.volume_panel = MeshViewportPanel(
             "Volume Mesh",
             default_display_options=self.VOLUME_DEFAULTS,
             enable_vtk_view=self._enable_vtk_view,
-            parent=self.main_splitter,
+            parent=central_widget,
         )
         self.bundle_panel = MeshViewportPanel(
             "Exported Surface Bundle",
             default_display_options=self.BUNDLE_DEFAULTS,
             enable_vtk_view=self._enable_vtk_view,
-            parent=self.main_splitter,
+            parent=central_widget,
         )
-        self.main_splitter.addWidget(self.volume_panel)
-        self.main_splitter.addWidget(self.bundle_panel)
-        self.main_splitter.setStretchFactor(0, 1)
-        self.main_splitter.setStretchFactor(1, 1)
+        panels_grid.addWidget(self.volume_panel, 0, 0)
+        panels_grid.addWidget(self.bundle_panel, 0, 1)
 
         self.vtu_controls_group = self._build_vtu_controls_group()
         self.volume_panel.insert_tab(
@@ -958,16 +954,6 @@ class MainWindow(QtWidgets.QMainWindow):
             self.BUNDLE_DEFAULTS,
         )
 
-        splitter_sizes = self._settings.value("splitter_sizes")
-        if splitter_sizes:
-            try:
-                self.main_splitter.setSizes(
-                    [int(value) for value in splitter_sizes])
-            except (TypeError, ValueError):
-                pass
-        else:
-            self.main_splitter.setSizes(list(DEFAULT_GUI_SPLITTER_SIZES))
-
     def _save_viewport_settings(self, prefix: str, panel: MeshViewportPanel) -> None:
         """Persist one viewport display-options block."""
         options = panel.display_options()
@@ -1011,7 +997,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self._settings.setValue("n_colors", self.n_colors_spin.value())
         self._settings.setValue(
             "generate_normals", self.normals_checkbox.isChecked())
-        self._settings.setValue("splitter_sizes", self.main_splitter.sizes())
         self._save_viewport_settings("volume", self.volume_panel)
         self._save_viewport_settings("bundle", self.bundle_panel)
         self._settings.sync()
@@ -1023,7 +1008,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.normals_checkbox.setChecked(DEFAULT_GENERATE_NORMALS)
         self.volume_panel.set_display_options(self.VOLUME_DEFAULTS)
         self.bundle_panel.set_display_options(self.BUNDLE_DEFAULTS)
-        self.main_splitter.setSizes(list(DEFAULT_GUI_SPLITTER_SIZES))
 
     def _selected_startup_field_name(self) -> str | None:
         """Return the best field to select for the current dataset."""

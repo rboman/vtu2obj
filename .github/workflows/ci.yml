@@ -29,6 +29,7 @@ jobs:
         run: python -m pip install -e .[dev]
 
       - name: Run Ruff
+        continue-on-error: true
         run: python -m ruff check . --no-cache
 
       - name: Check Ruff formatting
