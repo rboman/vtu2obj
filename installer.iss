@@ -25,7 +25,8 @@ SolidCompression=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-PrivilegesRequired=admin
+PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=dialog
 UninstallDisplayIcon={app}\{#MyAppExeName}
 
 [Languages]
@@ -34,7 +35,7 @@ Name: "french"; MessagesFile: "compiler:Languages\French.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
-Name: "addtopath"; Description: "Add installation folder to system PATH"; GroupDescription: "Command-line integration:"; Flags: unchecked
+Name: "addtopath"; Description: "Add installation folder to PATH"; GroupDescription: "Command-line integration:"; Flags: unchecked
 
 [Files]
 Source: "{#MyBuildDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -50,14 +51,31 @@ Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: no
 
 [Code]
 const
-  EnvironmentKey = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
+  SystemEnvKey = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
+  UserEnvKey   = 'Environment';
+
+function GetEnvHive: Integer;
+begin
+  if IsAdminInstallMode then
+    Result := HKLM
+  else
+    Result := HKCU;
+end;
+
+function GetEnvKey: string;
+begin
+  if IsAdminInstallMode then
+    Result := SystemEnvKey
+  else
+    Result := UserEnvKey;
+end;
 
 function AddDirToPath(DirName: string): Boolean;
 var
   OldPath: string;
 begin
   Result := False;
-  if not RegQueryStringValue(HKLM, EnvironmentKey, 'Path', OldPath) then
+  if not RegQueryStringValue(GetEnvHive, GetEnvKey, 'Path', OldPath) then
     OldPath := '';
 
   if Pos(';' + Uppercase(DirName) + ';', ';' + Uppercase(OldPath) + ';') > 0 then
@@ -69,7 +87,7 @@ begin
   if (OldPath <> '') and (OldPath[Length(OldPath)] <> ';') then
     OldPath := OldPath + ';';
 
-  Result := RegWriteStringValue(HKLM, EnvironmentKey, 'Path', OldPath + DirName);
+  Result := RegWriteStringValue(GetEnvHive, GetEnvKey, 'Path', OldPath + DirName);
 end;
 
 function RemoveDirFromPath(DirName: string): Boolean;
@@ -79,7 +97,7 @@ var
   StartPos: Integer;
 begin
   Result := False;
-  if not RegQueryStringValue(HKLM, EnvironmentKey, 'Path', OldPath) then
+  if not RegQueryStringValue(GetEnvHive, GetEnvKey, 'Path', OldPath) then
   begin
     Result := True;
     exit;
@@ -100,7 +118,7 @@ begin
   if (Length(OldPath) > 0) and (OldPath[Length(OldPath)] = ';') then
     Delete(OldPath, Length(OldPath), 1);
 
-  Result := RegWriteStringValue(HKLM, EnvironmentKey, 'Path', OldPath);
+  Result := RegWriteStringValue(GetEnvHive, GetEnvKey, 'Path', OldPath);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);

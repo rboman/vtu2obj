@@ -24,7 +24,6 @@ from ..defaults import (
     DEFAULT_COLORMAP_NAME,
     DEFAULT_GENERATE_NORMALS,
     DEFAULT_GITHUB_URL,
-    DEFAULT_GUI_SPLITTER_SIZES,
     DEFAULT_LIGHTING_INTENSITY,
     DEFAULT_LIGHTING_PRESET,
     DEFAULT_N_COLORS,
@@ -380,29 +379,26 @@ class MainWindow(QtWidgets.QMainWindow):
         root_layout.setContentsMargins(8, 8, 8, 8)
         root_layout.setSpacing(8)
 
-        self.main_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal, self)
-        self.main_splitter.setToolTip(
-            "Resize the left VTU workflow panel and the right OBJ comparison "
-            "panel independently."
-        )
-        root_layout.addWidget(self.main_splitter, stretch=1)
+        panels_grid = QtWidgets.QGridLayout()
+        panels_grid.setSpacing(8)
+        panels_grid.setColumnStretch(0, 1)
+        panels_grid.setColumnStretch(1, 1)
+        root_layout.addLayout(panels_grid, stretch=1)
 
         self.volume_panel = MeshViewportPanel(
             "Volume Mesh",
             default_display_options=self.VOLUME_DEFAULTS,
             enable_vtk_view=self._enable_vtk_view,
-            parent=self.main_splitter,
+            parent=central_widget,
         )
         self.bundle_panel = MeshViewportPanel(
             "Exported Surface Bundle",
             default_display_options=self.BUNDLE_DEFAULTS,
             enable_vtk_view=self._enable_vtk_view,
-            parent=self.main_splitter,
+            parent=central_widget,
         )
-        self.main_splitter.addWidget(self.volume_panel)
-        self.main_splitter.addWidget(self.bundle_panel)
-        self.main_splitter.setStretchFactor(0, 1)
-        self.main_splitter.setStretchFactor(1, 1)
+        panels_grid.addWidget(self.volume_panel, 0, 0)
+        panels_grid.addWidget(self.bundle_panel, 0, 1)
 
         self.vtu_controls_group = self._build_vtu_controls_group()
         self.volume_panel.insert_tab(
@@ -523,6 +519,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self.credits_action.setStatusTip(self.credits_action.toolTip())
         self.credits_action.triggered.connect(self.show_credits_dialog)
 
+        self.show_qsettings_action = QtWidgets.QAction(
+            standard_icon(self, QtWidgets.QStyle.SP_FileDialogDetailedView),
+            "Show QSettings",
+            self,
+        )
+        self.show_qsettings_action.setToolTip(
+            "Display all QSettings values and the file where they are stored."
+        )
+        self.show_qsettings_action.setStatusTip(self.show_qsettings_action.toolTip())
+        self.show_qsettings_action.triggered.connect(self.show_qsettings_dialog)
+
     def _build_menus(self) -> None:
         """Create the application menus."""
         menu_bar = self.menuBar()
@@ -544,6 +551,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.help_menu.addAction(self.about_action)
         self.help_menu.addAction(self.github_action)
         self.help_menu.addAction(self.credits_action)
+
+        self.debug_menu = menu_bar.addMenu("&Debug")
+        self.debug_menu.addAction(self.show_qsettings_action)
 
     def _build_vtu_controls_group(self) -> QtWidgets.QGroupBox:
         """Build the left-hand VTU and conversion controls."""
@@ -956,16 +966,6 @@ class MainWindow(QtWidgets.QMainWindow):
             self.BUNDLE_DEFAULTS,
         )
 
-        splitter_sizes = self._settings.value("splitter_sizes")
-        if splitter_sizes:
-            try:
-                self.main_splitter.setSizes(
-                    [int(value) for value in splitter_sizes])
-            except (TypeError, ValueError):
-                pass
-        else:
-            self.main_splitter.setSizes(list(DEFAULT_GUI_SPLITTER_SIZES))
-
     def _save_viewport_settings(self, prefix: str, panel: MeshViewportPanel) -> None:
         """Persist one viewport display-options block."""
         options = panel.display_options()
@@ -1009,7 +1009,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self._settings.setValue("n_colors", self.n_colors_spin.value())
         self._settings.setValue(
             "generate_normals", self.normals_checkbox.isChecked())
-        self._settings.setValue("splitter_sizes", self.main_splitter.sizes())
         self._save_viewport_settings("volume", self.volume_panel)
         self._save_viewport_settings("bundle", self.bundle_panel)
         self._settings.sync()
@@ -1021,7 +1020,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.normals_checkbox.setChecked(DEFAULT_GENERATE_NORMALS)
         self.volume_panel.set_display_options(self.VOLUME_DEFAULTS)
         self.bundle_panel.set_display_options(self.BUNDLE_DEFAULTS)
-        self.main_splitter.setSizes(list(DEFAULT_GUI_SPLITTER_SIZES))
 
     def _selected_startup_field_name(self) -> str | None:
         """Return the best field to select for the current dataset."""
@@ -1597,6 +1595,50 @@ class MainWindow(QtWidgets.QMainWindow):
                 ]
             ),
         )
+
+    def show_qsettings_dialog(self) -> None:
+        """Show a dialog listing all QSettings values and the storage path."""
+        dialog = QtWidgets.QDialog(self)
+        dialog.setWindowTitle("QSettings")
+        dialog.resize(640, 480)
+
+        layout = QtWidgets.QVBoxLayout(dialog)
+
+        storage_path = self._settings.fileName()
+        path_label = QtWidgets.QLabel(f"<b>Storage file:</b> {storage_path}")
+        path_label.setWordWrap(True)
+        path_label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        layout.addWidget(path_label)
+
+        table = QtWidgets.QTableWidget(dialog)
+        table.setColumnCount(2)
+        table.setHorizontalHeaderLabels(["Key", "Value"])
+        table.horizontalHeader().setStretchLastSection(True)
+        table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        table.setAlternatingRowColors(True)
+
+        keys = self._settings.allKeys()
+        table.setRowCount(len(keys))
+        for row, key in enumerate(sorted(keys)):
+            value = self._settings.value(key)
+            if isinstance(value, list):
+                display = "[" + ", ".join(str(v) for v in value) + "]"
+            elif isinstance(value, bool):
+                display = "true" if value else "false"
+            else:
+                display = str(value)
+            table.setItem(row, 0, QtWidgets.QTableWidgetItem(key))
+            table.setItem(row, 1, QtWidgets.QTableWidgetItem(display))
+        table.resizeColumnToContents(0)
+
+        layout.addWidget(table)
+
+        button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Close)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+
+        dialog.exec_()
 
     def open_github_repository(self) -> None:
         """Open the GitHub repository in the default browser."""

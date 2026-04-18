@@ -128,7 +128,6 @@ def test_main_window_restores_persisted_settings(
     first_window.colormap_combo.setCurrentText("cool_to_warm")
     first_window.n_colors_spin.setValue(32)
     first_window.normals_checkbox.setChecked(False)
-    first_window.main_splitter.setSizes([420, 780])
     first_window.volume_panel.set_display_options(
         ViewDisplayOptions(
             show_edges=False,
@@ -639,3 +638,46 @@ def test_recent_file_menu_action_opens_selected_file(
 
     assert captured["vtu"] == str(sample_vtu_path.resolve(strict=False))
     assert captured["obj"] == str(sample_obj_bundle.obj_path.resolve(strict=False))
+
+
+def test_debug_menu_show_qsettings_dialog(
+    qapplication: QtWidgets.QApplication,
+    tmp_path: Path,
+) -> None:
+    _ = qapplication
+    settings_path = tmp_path / "gui_qsettings_debug.ini"
+    settings = QtCore.QSettings(
+        str(settings_path),
+        QtCore.QSettings.IniFormat,
+    )
+    settings.setValue("colormap", "viridis")
+    settings.sync()
+
+    window = MainWindow(enable_vtk_view=False, settings=settings)
+
+    assert hasattr(window, "show_qsettings_action")
+    assert window.show_qsettings_action.text() == "Show QSettings"
+    assert window.show_qsettings_action.toolTip()
+    assert hasattr(window, "debug_menu")
+    assert window.debug_menu.title() == "&Debug"
+    assert window.show_qsettings_action in window.debug_menu.actions()
+
+    # Verify the dialog can be created without error by monkeypatching exec_
+    opened: dict[str, object] = {}
+
+    original_exec = QtWidgets.QDialog.exec_
+
+    def fake_exec(self: QtWidgets.QDialog) -> int:
+        opened["dialog"] = self
+        return 0
+
+    QtWidgets.QDialog.exec_ = fake_exec  # type: ignore[method-assign]
+    try:
+        window.show_qsettings_dialog()
+    finally:
+        QtWidgets.QDialog.exec_ = original_exec  # type: ignore[method-assign]
+
+    assert "dialog" in opened
+    dialog = opened["dialog"]
+    assert isinstance(dialog, QtWidgets.QDialog)
+    assert dialog.windowTitle() == "QSettings"
