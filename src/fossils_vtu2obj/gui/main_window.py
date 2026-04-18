@@ -1083,6 +1083,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _set_recent_files(self, key: str, paths: list[str]) -> None:
         """Persist one cleaned recent-file list."""
         self._settings.setValue(key, paths[: self.MAX_RECENT_FILES])
+        self._settings.sync()
 
     def _add_recent_file(self, key: str, path: str | Path) -> None:
         """Push one existing file path to the top of a recent-file list."""
@@ -1620,9 +1621,30 @@ class MainWindow(QtWidgets.QMainWindow):
         table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         table.setAlternatingRowColors(True)
 
-        keys = self._settings.allKeys()
-        table.setRowCount(len(keys))
-        for row, key in enumerate(sorted(keys)):
+        all_keys = self._settings.allKeys()
+
+        # Qt IniFormat stores lists as array subkeys: "key\1", "key\2", "key\size".
+        # Detect array parent keys by looking for the "\size" sentinel subkey, then
+        # collapse all their subkeys into a single display row.
+        array_parents: set[str] = set()
+        for key in all_keys:
+            if "\\" in key and key.rsplit("\\", 1)[1] == "size":
+                array_parents.add(key.rsplit("\\", 1)[0])
+
+        display_keys: list[str] = []
+        seen_parents: set[str] = set()
+        for key in sorted(all_keys):
+            if "\\" in key:
+                parent = key.rsplit("\\", 1)[0]
+                if parent in array_parents:
+                    if parent not in seen_parents:
+                        seen_parents.add(parent)
+                        display_keys.append(parent)
+                    continue
+            display_keys.append(key)
+
+        table.setRowCount(len(display_keys))
+        for row, key in enumerate(display_keys):
             value = self._settings.value(key)
             if isinstance(value, list):
                 display = "[" + ", ".join(str(v) for v in value) + "]"

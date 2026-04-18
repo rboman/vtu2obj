@@ -577,8 +577,9 @@ def test_recent_files_lists_are_persisted_and_restored(
     tmp_path: Path,
 ) -> None:
     _ = qapplication
+    settings_path = tmp_path / "gui_settings_recent.ini"
     settings = QtCore.QSettings(
-        str(tmp_path / "gui_settings_recent.ini"),
+        str(settings_path),
         QtCore.QSettings.IniFormat,
     )
     first_window = MainWindow(enable_vtk_view=False, settings=settings)
@@ -587,6 +588,36 @@ def test_recent_files_lists_are_persisted_and_restored(
     first_window.close()
 
     second_window = MainWindow(enable_vtk_view=False, settings=settings)
+
+    assert str(sample_vtu_path.resolve(strict=False)) in second_window._recent_files(
+        "recent_vtu_files"
+    )
+    assert str(
+        sample_obj_bundle.obj_path.resolve(strict=False)
+    ) in second_window._recent_files("recent_obj_files")
+    assert second_window.recent_vtu_menu.actions()
+    assert second_window.recent_obj_menu.actions()
+
+
+def test_recent_files_lists_survive_new_settings_instance(
+    qapplication: QtWidgets.QApplication,
+    sample_vtu_path: Path,
+    sample_obj_bundle,
+    tmp_path: Path,
+) -> None:
+    """Recent-file lists must be readable from a fresh QSettings instance (disk round-trip)."""
+    _ = qapplication
+    settings_path = tmp_path / "gui_settings_recent_disk.ini"
+
+    first_settings = QtCore.QSettings(str(settings_path), QtCore.QSettings.IniFormat)
+    first_window = MainWindow(enable_vtk_view=False, settings=first_settings)
+    first_window.load_file(sample_vtu_path, refresh=False, show_progress=False)
+    first_window.load_obj_bundle(sample_obj_bundle.obj_path, show_progress=False)
+    first_window.close()
+
+    # Simulate a new application run by creating a completely fresh QSettings object.
+    fresh_settings = QtCore.QSettings(str(settings_path), QtCore.QSettings.IniFormat)
+    second_window = MainWindow(enable_vtk_view=False, settings=fresh_settings)
 
     assert str(sample_vtu_path.resolve(strict=False)) in second_window._recent_files(
         "recent_vtu_files"
@@ -681,3 +712,61 @@ def test_debug_menu_show_qsettings_dialog(
     dialog = opened["dialog"]
     assert isinstance(dialog, QtWidgets.QDialog)
     assert dialog.windowTitle() == "QSettings"
+
+
+def test_qsettings_dialog_shows_recent_lists_as_single_rows(
+    qapplication: QtWidgets.QApplication,
+    sample_vtu_path: Path,
+    sample_obj_bundle,
+    tmp_path: Path,
+) -> None:
+    """Recent-file lists must appear as one row each in the QSettings dialog,
+    not as individual Qt array subkeys (key\\1, key\\size, …)."""
+    _ = qapplication
+    settings = QtCore.QSettings(
+        str(tmp_path / "gui_qsettings_lists.ini"),
+        QtCore.QSettings.IniFormat,
+    )
+    window = MainWindow(enable_vtk_view=False, settings=settings)
+    window._set_recent_files(
+        "recent_vtu_files",
+        [str(sample_vtu_path.resolve(strict=False))],
+    )
+    window._set_recent_files(
+        "recent_obj_files",
+        [str(sample_obj_bundle.obj_path.resolve(strict=False))],
+    )
+    window._refresh_recent_file_menus()
+
+    captured: dict[str, object] = {}
+    original_exec = QtWidgets.QDialog.exec_
+
+    def fake_exec(self: QtWidgets.QDialog) -> int:
+        captured["dialog"] = self
+        return 0
+
+    QtWidgets.QDialog.exec_ = fake_exec  # type: ignore[method-assign]
+    try:
+        window.show_qsettings_dialog()
+    finally:
+        QtWidgets.QDialog.exec_ = original_exec  # type: ignore[method-assign]
+
+    dialog = captured["dialog"]
+    assert isinstance(dialog, QtWidgets.QDialog)
+    table = dialog.findChild(QtWidgets.QTableWidget)
+    assert table is not None
+
+    displayed_keys = [
+        table.item(row, 0).text() for row in range(table.rowCount())
+    ]
+    # The list keys must appear exactly once as their parent key.
+    assert displayed_keys.count("recent_vtu_files") == 1
+    assert displayed_keys.count("recent_obj_files") == 1
+    # Individual Qt array subkeys must not appear.
+    assert not any(k.startswith("recent_vtu_files\\") for k in displayed_keys)
+    assert not any(k.startswith("recent_obj_files\\") for k in displayed_keys)
+    # The value cell must show the bracketed list representation.
+    vtu_row = displayed_keys.index("recent_vtu_files")
+    obj_row = displayed_keys.index("recent_obj_files")
+    assert table.item(vtu_row, 1).text().startswith("[")
+    assert table.item(obj_row, 1).text().startswith("[")
