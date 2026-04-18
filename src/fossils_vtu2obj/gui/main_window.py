@@ -523,6 +523,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self.credits_action.setStatusTip(self.credits_action.toolTip())
         self.credits_action.triggered.connect(self.show_credits_dialog)
 
+        self.show_qsettings_action = QtWidgets.QAction(
+            standard_icon(self, QtWidgets.QStyle.SP_FileDialogDetailedView),
+            "Show QSettings",
+            self,
+        )
+        self.show_qsettings_action.setToolTip(
+            "Display all QSettings values and the file where they are stored."
+        )
+        self.show_qsettings_action.setStatusTip(self.show_qsettings_action.toolTip())
+        self.show_qsettings_action.triggered.connect(self.show_qsettings_dialog)
+
     def _build_menus(self) -> None:
         """Create the application menus."""
         menu_bar = self.menuBar()
@@ -546,6 +557,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.credits_menu = menu_bar.addMenu("&Credits")
         self.credits_menu.addAction(self.credits_action)
+
+        self.debug_menu = menu_bar.addMenu("&Debug")
+        self.debug_menu.addAction(self.show_qsettings_action)
 
     def _build_vtu_controls_group(self) -> QtWidgets.QGroupBox:
         """Build the left-hand VTU and conversion controls."""
@@ -1599,6 +1613,50 @@ class MainWindow(QtWidgets.QMainWindow):
                 ]
             ),
         )
+
+    def show_qsettings_dialog(self) -> None:
+        """Show a dialog listing all QSettings values and the storage path."""
+        dialog = QtWidgets.QDialog(self)
+        dialog.setWindowTitle("QSettings")
+        dialog.resize(640, 480)
+
+        layout = QtWidgets.QVBoxLayout(dialog)
+
+        storage_path = self._settings.fileName()
+        path_label = QtWidgets.QLabel(f"<b>Storage file:</b> {storage_path}")
+        path_label.setWordWrap(True)
+        path_label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        layout.addWidget(path_label)
+
+        table = QtWidgets.QTableWidget(dialog)
+        table.setColumnCount(2)
+        table.setHorizontalHeaderLabels(["Key", "Value"])
+        table.horizontalHeader().setStretchLastSection(True)
+        table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        table.setAlternatingRowColors(True)
+
+        keys = self._settings.allKeys()
+        table.setRowCount(len(keys))
+        for row, key in enumerate(sorted(keys)):
+            value = self._settings.value(key)
+            if isinstance(value, list):
+                display = "[" + ", ".join(str(v) for v in value) + "]"
+            elif isinstance(value, bool):
+                display = "true" if value else "false"
+            else:
+                display = str(value)
+            table.setItem(row, 0, QtWidgets.QTableWidgetItem(key))
+            table.setItem(row, 1, QtWidgets.QTableWidgetItem(display))
+        table.resizeColumnToContents(0)
+
+        layout.addWidget(table)
+
+        button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Close)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+
+        dialog.exec_()
 
     def open_github_repository(self) -> None:
         """Open the GitHub repository in the default browser."""
